@@ -1,4 +1,1 @@
 {}
-git add vercel.json
-git commit -m "Corrige vercel.json"
-git push origin main
