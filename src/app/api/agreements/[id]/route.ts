@@ -10,6 +10,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (d.action === "start-interest") {
     if (!old.dailyInterestRate || Number(old.dailyInterestRate) <= 0) return fail("Defina uma taxa de juros diário antes de iniciar");
     if (old.dailyInterestStartedAt) return fail("O juros diário já foi iniciado");
+    const today = new Date(); today.setHours(0, 0, 0, 0); const due = new Date(old.dueDate); due.setHours(0, 0, 0, 0);
+    if (due >= today || old.status === "PAID" || old.status === "CANCELED") return fail("Os juros diarios so podem ser iniciados em um acordo vencido");
     return NextResponse.json(await prisma.agreement.update({ where: { id }, data: { dailyInterestStartedAt: new Date() } }));
   }
   const amount = asNumber(d.originalAmount), count = asNumber(d.installmentCount), rate = asNumber(d.interestRate);
