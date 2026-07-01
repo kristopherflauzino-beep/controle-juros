@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  CLIENT
+}
+
+enum RequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AgreementStatus {
+  OPEN
+  PAID
+  LATE
+  CANCELED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  client       Client?
+}
+
+model Client {
+  id         String      @id @default(cuid())
+  userId     String      @unique
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document   String?
+  phone      String?
+  requests   Request[]
+  agreements Agreement[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+}
+
+model Request {
+  id          String        @id @default(cuid())
+  clientId    String
+  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  amount      Decimal       @db.Decimal(14, 2)
+  note        String?
+  status      RequestStatus @default(PENDING)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  agreement   Agreement?
+}
+
+model Agreement {
+  id                 String          @id @default(cuid())
+  clientId           String
+  client             Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  requestId          String?         @unique
+  request            Request?        @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  originalAmount     Decimal         @db.Decimal(14, 2)
+  openAmount         Decimal         @db.Decimal(14, 2)
+  installmentCount   Int
+  interestRate       Decimal         @db.Decimal(8, 4)
+  installmentAmount  Decimal         @db.Decimal(14, 2)
+  totalAmount        Decimal         @db.Decimal(14, 2)
+  agreementDate      DateTime        @default(now())
+  dueDate             DateTime
+  status              AgreementStatus @default(OPEN)
+  notes               String?
+  dailyInterestRate   Decimal?        @db.Decimal(8, 4)
+  dailyInterestStartedAt DateTime?
+  installments       Installment[]
+  dailyInterestLogs  DailyInterestLog[]
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+}
+
+model Installment {
+  id           String    @id @default(cuid())
+  agreementId  String
+  agreement    Agreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  number       Int
+  amount       Decimal   @db.Decimal(14, 2)
+  interest     Decimal   @db.Decimal(14, 2)
+  amortization Decimal   @db.Decimal(14, 2)
+  balance      Decimal   @db.Decimal(14, 2)
+  dueDate      DateTime
+  paid         Boolean   @default(false)
+  @@unique([agreementId, number])
+}
+
+model DailyInterestLog {
+  id              String    @id @default(cuid())
+  agreementId     String
+  agreement       Agreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  calculatedAt    DateTime  @default(now())
+  days            Int
+  accumulated     Decimal   @db.Decimal(14, 2)
+  updatedAmount   Decimal   @db.Decimal(14, 2)
+}
+
+
