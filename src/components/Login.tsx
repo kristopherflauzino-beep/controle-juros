@@ -19,9 +19,18 @@ export default function Login() {
     setLoading(true);
     const url = setup ? "/api/auth/setup" : register ? "/api/auth/register" : "/api/auth/login";
     const body = register ? { name: data.name, identifier: data.email, password: data.password } : data;
-    const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    const json = await res.json();
-    if (!res.ok) { setError(json.error); setLoading(false); } else location.href = "/painel";
+    try {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 15000);
+      const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
+      window.clearTimeout(timeout);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { setError(json.error || "Serviço temporariamente indisponível. Tente novamente."); setLoading(false); }
+      else location.href = "/painel";
+    } catch {
+      setError("Não foi possível acessar o servidor. Tente novamente em alguns instantes.");
+      setLoading(false);
+    }
   }
 
   const creating = setup || register;
