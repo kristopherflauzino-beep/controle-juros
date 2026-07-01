@@ -6,7 +6,7 @@ import { fail } from "@/lib/api";
 
 export async function POST(req: NextRequest) {
   const { email, password } = await req.json();
-  if (!email || !password) return fail("Informe e-mail ou login e senha");
+  if (!email || !password) return fail("Informe usuario e senha");
   try {
     const user = await prisma.user.findUnique({ where: { email: String(email).trim().toLowerCase() } });
     if (!user || !user.active || !(await compare(String(password), user.passwordHash))) return fail("Login ou senha inválidos", 401);

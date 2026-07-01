@@ -16,6 +16,27 @@ export function priceTable(principal: number, monthlyRate: number, count: number
   return { payment: round(payment), total: round(total), interest: round(total - principal), rows };
 }
 
+export function flatProgressiveTable(principal: number, baseRate: number, count: number, progressiveRate = 5): { payment: number; total: number; interest: number; rows: Row[]; effectiveRate: number } {
+  if (!(principal > 0) || !(count >= 1) || baseRate < 0 || progressiveRate < 0) throw new Error("Parâmetros financeiros inválidos");
+  const extraSteps = Math.max(0, count - 2);
+  const effectiveRate = baseRate + extraSteps * progressiveRate;
+  const total = round(principal * (1 + effectiveRate / 100));
+  const payment = round(total / count);
+  let paid = 0;
+  const rows = Array.from({ length: count }, (_, index) => {
+    const amount = index === count - 1 ? round(total - paid) : payment;
+    paid = round(paid + amount);
+    return {
+      number: index + 1,
+      amount,
+      interest: round(amount - principal / count),
+      amortization: round(principal / count),
+      balance: round(Math.max(0, total - paid))
+    };
+  });
+  return { payment, total, interest: round(total - principal), rows, effectiveRate: round(effectiveRate) };
+}
+
 export function dailyInterest(openAmount: number, rate: number, startedAt?: Date | string | null) {
   if (!startedAt || rate <= 0) return { days: 0, accumulated: 0, updatedAmount: openAmount };
   const start = new Date(startedAt); start.setHours(0, 0, 0, 0);

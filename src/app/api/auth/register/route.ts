@@ -9,7 +9,7 @@ const input = z.object({ name: z.string().trim().min(2), identifier: z.string().
 
 export async function POST(req: NextRequest) {
   const parsed = input.safeParse(await req.json());
-  if (!parsed.success) return fail("Informe nome, e-mail ou login e uma senha com pelo menos 6 caracteres");
+  if (!parsed.success) return fail("Informe nome, usuario e uma senha com pelo menos 6 caracteres");
   const { name, password } = parsed.data;
   const identifier = parsed.data.identifier.toLowerCase();
   try {
@@ -18,5 +18,5 @@ export async function POST(req: NextRequest) {
     const res = NextResponse.json({ ok: true, role: user.role }, { status: 201 });
     res.cookies.set("session", token, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 604800 });
     return res;
-  } catch { return fail("Este e-mail ou login já está cadastrado", 409); }
+  } catch { return fail("Este login ja esta cadastrado", 409); }
 }

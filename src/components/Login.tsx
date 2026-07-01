@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Eye, EyeOff, Landmark, LockKeyhole, Mail, UserRound } from "lucide-react";
+import { Eye, EyeOff, Landmark, LockKeyhole, UserRound } from "lucide-react";
 
 export default function Login() {
   const [setup, setSetup] = useState(false);
@@ -40,9 +40,9 @@ export default function Login() {
       <div className="mobile-logo"><Landmark /></div>
       <span className="eyebrow">{setup ? "PRIMEIRO ACESSO" : register ? "NOVA CONTA" : "ACESSO SEGURO"}</span>
       <h2>{setup ? "Crie o administrador" : register ? "Crie sua conta" : "Bem-vindo de volta"}</h2>
-      <p>{creating ? "Preencha os dados para começar." : "Entre com seu e-mail ou login para continuar."}</p>
+      <p>{creating ? "Preencha os dados para começar." : "Entre com seu nome de usuário para continuar."}</p>
       {creating && <label>Nome completo<div className="input-icon"><UserRound/><input name="name" required minLength={2} autoComplete="name" /></div></label>}
-      <label>E-mail ou login<div className="input-icon"><Mail/><input type="text" name="email" required minLength={3} autoComplete="username" /></div></label>
+      <label>Nome de usuário<div className="input-icon"><UserRound/><input type="text" name="email" required minLength={3} autoComplete="username" /></div></label>
       <label>Senha<div className="input-icon password-input"><LockKeyhole/><input type={showPassword ? "text" : "password"} name="password" required minLength={6} autoComplete={creating ? "new-password" : "current-password"}/><button type="button" className="password-toggle" onClick={() => setShowPassword(v => !v)} aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}>{showPassword ? <EyeOff/> : <Eye/>}</button></div></label>
       {register && <label>Confirmar senha<div className="input-icon"><LockKeyhole/><input type={showPassword ? "text" : "password"} name="confirmPassword" required minLength={6} autoComplete="new-password" /></div></label>}
       {error && <div className="alert error">{error}</div>}
