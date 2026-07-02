@@ -43,6 +43,7 @@ model Client {
   user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   document   String?
   phone      String?
+  monthlyLimit Decimal     @default(0) @db.Decimal(14, 2)
   requests   Request[]
   agreements Agreement[]
   createdAt  DateTime    @default(now())

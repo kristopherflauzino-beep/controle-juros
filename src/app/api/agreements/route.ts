@@ -6,7 +6,7 @@ import { priceTable } from "@/lib/finance";
 export async function GET(req: NextRequest) {
   const auth = await requireSession(req); if (auth.error) return auth.error;
   const where = auth.session!.role === "CLIENT" ? { client: { userId: auth.session!.userId } } : {};
-  return NextResponse.json(await prisma.agreement.findMany({ where, include: { client: { include: { user: { select: { name: true, email: true } } } }, installments: { orderBy: { number: "asc" } } }, orderBy: { createdAt: "desc" } }));
+  return NextResponse.json(await prisma.agreement.findMany({ where, include: { client: { include: { user: { select: { name: true, email: true } } } }, installments: { orderBy: { number: "asc" } } }, orderBy: { dueDate: "asc" } }));
 }
 export async function POST(req: NextRequest) {
   const auth = await requireSession(req, "ADMIN"); if (auth.error) return auth.error;
