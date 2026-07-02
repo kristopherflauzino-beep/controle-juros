@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { asNumber, fail, requireSession } from "@/lib/api";
-import { priceTable } from "@/lib/finance";
+import { dailyInterest, priceTable } from "@/lib/finance";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireSession(req, "ADMIN"); if (auth.error) return auth.error;
@@ -13,6 +13,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const today = new Date(); today.setHours(0, 0, 0, 0); const due = new Date(old.dueDate); due.setHours(0, 0, 0, 0);
     if (due >= today || old.status === "PAID" || old.status === "CANCELED") return fail("Os juros diarios so podem ser iniciados em um acordo vencido");
     return NextResponse.json(await prisma.agreement.update({ where: { id }, data: { dailyInterestStartedAt: new Date() } }));
+  }
+  if (d.action === "mark-paid") {
+    if (old.status === "PAID") return fail("Este acordo ja esta pago");
+    if (old.status === "CANCELED") return fail("Um acordo cancelado nao pode ser recebido");
+    const paidAmount = dailyInterest(Number(old.openAmount), Number(old.dailyInterestRate), old.dailyInterestStartedAt).updatedAmount;
+    const paid = await prisma.$transaction(async tx => {
+      await tx.installment.updateMany({ where: { agreementId: id }, data: { paid: true } });
+      return tx.agreement.update({ where: { id }, data: { status: "PAID", openAmount: paidAmount, dailyInterestStartedAt: null } });
+    });
+    return NextResponse.json(paid);
   }
   const amount = asNumber(d.originalAmount), count = asNumber(d.installmentCount), rate = asNumber(d.interestRate);
   if (!(amount > 0) || !(count >= 1) || rate < 0 || !d.dueDate) return fail("Dados financeiros inválidos");
