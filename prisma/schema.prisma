@@ -18,6 +18,12 @@ enum RequestStatus {
   REJECTED
 }
 
+enum LimitRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum AgreementStatus {
   OPEN
   PAID
@@ -29,6 +35,7 @@ model User {
   id           String   @id @default(cuid())
   name         String
   email        String   @unique
+  lastSeenAt   DateTime?
   passwordHash String
   role         Role
   active       Boolean  @default(true)
@@ -46,6 +53,7 @@ model Client {
   monthlyLimit Decimal     @default(0) @db.Decimal(14, 2)
   requests   Request[]
   agreements Agreement[]
+  limitRequests LimitChangeRequest[]
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
 }
@@ -61,6 +69,21 @@ model Request {
   updatedAt   DateTime      @updatedAt
   agreement   Agreement?
 }
+model LimitChangeRequest {
+  id             String             @id @default(cuid())
+  clientId       String
+  client         Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  currentLimit   Decimal            @db.Decimal(14, 2)
+  requestedLimit Decimal            @db.Decimal(14, 2)
+  status         LimitRequestStatus @default(PENDING)
+  adminMessage   String?
+  reviewedAt     DateTime?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@index([clientId, createdAt])
+}
+
 
 model Agreement {
   id                 String          @id @default(cuid())

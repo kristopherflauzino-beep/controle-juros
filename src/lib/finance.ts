@@ -16,11 +16,10 @@ export function priceTable(principal: number, monthlyRate: number, count: number
   return { payment: round(payment), total: round(total), interest: round(total - principal), rows };
 }
 
-export function flatProgressiveTable(principal: number, baseRate: number, count: number, progressiveRate = 5): { payment: number; total: number; interest: number; rows: Row[]; effectiveRate: number } {
-  if (!(principal > 0) || !(count >= 1) || baseRate < 0 || progressiveRate < 0) throw new Error("Parâmetros financeiros inválidos");
-  const extraSteps = Math.max(0, count - 2);
-  const effectiveRate = baseRate + extraSteps * progressiveRate;
-  const total = round(principal * (1 + effectiveRate / 100));
+export function flatProgressiveTable(principal: number, baseRate: number, count: number): { payment: number; total: number; interest: number; rows: Row[]; effectiveRate: number } {
+  if (!(principal > 0) || !(count >= 1) || baseRate < 0) throw new Error("Parâmetros financeiros inválidos");
+  const total = round(principal * (1 + baseRate / 100) ** Math.max(1, count - 1));
+  const effectiveRate = round((total / principal - 1) * 100);
   const payment = round(total / count);
   let paid = 0;
   const rows = Array.from({ length: count }, (_, index) => {

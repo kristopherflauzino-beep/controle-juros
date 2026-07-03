@@ -8,7 +8,7 @@ const schema = z.object({ name: z.string().trim().min(2), email: z.string().trim
 export async function GET(req: NextRequest) {
   const auth = await requireSession(req, "ADMIN"); if (auth.error) return auth.error;
   const now = new Date(), monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)), nextMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-  const clients = await prisma.client.findMany({ include: { user: { select: { name: true, email: true, active: true } }, requests: { where: { status: { in: ["PENDING", "APPROVED"] }, createdAt: { gte: monthStart, lt: nextMonth } }, select: { amount: true } }, _count: { select: { agreements: true, requests: true } } }, orderBy: { createdAt: "desc" } });
+  const clients = await prisma.client.findMany({ include: { user: { select: { name: true, email: true, active: true, lastSeenAt: true } }, requests: { where: { status: { in: ["PENDING", "APPROVED"] }, createdAt: { gte: monthStart, lt: nextMonth } }, select: { amount: true } }, _count: { select: { agreements: true, requests: true } } }, orderBy: { createdAt: "desc" } });
   return NextResponse.json(clients.map(({ requests, ...client }) => ({ ...client, monthlyUsed: requests.reduce((sum, request) => sum + Number(request.amount), 0) })));
 }
 export async function POST(req: NextRequest) {
