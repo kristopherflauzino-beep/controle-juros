@@ -63,6 +63,9 @@ model Request {
   clientId    String
   client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
   amount      Decimal       @db.Decimal(14, 2)
+  installmentCount Int      @default(1)
+  interestRate Decimal      @default(40) @db.Decimal(8, 4)
+  firstDueDate DateTime?
   note        String?
   status      RequestStatus @default(PENDING)
   createdAt   DateTime      @default(now())

@@ -36,6 +36,13 @@ export function flatProgressiveTable(principal: number, baseRate: number, count:
   return { payment, total, interest: round(total - principal), rows, effectiveRate: round(effectiveRate) };
 }
 
+
+export function monthlyDueDate(firstDueDate: Date | string, monthOffset: number) {
+  const first = new Date(firstDueDate);
+  const year = first.getUTCFullYear(), month = first.getUTCMonth() + monthOffset, day = first.getUTCDate();
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(year, month, Math.min(day, lastDay), 12));
+}
 export function dailyInterest(openAmount: number, rate: number, startedAt?: Date | string | null) {
   if (!startedAt || rate <= 0) return { days: 0, accumulated: 0, updatedAmount: openAmount };
   const start = new Date(startedAt); start.setHours(0, 0, 0, 0);

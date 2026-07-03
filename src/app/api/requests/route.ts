@@ -8,7 +8,9 @@ export async function GET(req: NextRequest) {
 }
 export async function POST(req: NextRequest) {
   const auth = await requireSession(req, "CLIENT"); if (auth.error) return auth.error;
-  const data = await req.json(); const amount = asNumber(data.amount); if (!(amount > 0)) return fail("Informe um valor maior que zero");
+  const data = await req.json(); const amount = asNumber(data.amount), installmentCount = asNumber(data.installmentCount), interestRate = asNumber(data.interestRate);
+  const firstDueDate = new Date(data.firstDueDate);
+  if (!(amount > 0) || !(installmentCount >= 1) || interestRate < 0 || isNaN(firstDueDate.getTime())) return fail("Informe valor, parcelas, juros e primeiro vencimento validos");
   const client = await prisma.client.findUnique({ where: { userId: auth.session!.userId } }); if (!client) return fail("Cadastro de cliente não encontrado", 404);
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
@@ -21,5 +23,5 @@ export async function POST(req: NextRequest) {
   if (limit > 0 && used + amount > limit) {
     return fail(`Limite mensal atingido. Limite: R$ ${limit.toFixed(2)}; utilizado: R$ ${used.toFixed(2)}.`);
   }
-  return NextResponse.json(await prisma.request.create({ data: { clientId: client.id, amount, note: data.note || null } }), { status: 201 });
+  return NextResponse.json(await prisma.request.create({ data: { clientId: client.id, amount, installmentCount, interestRate, firstDueDate, note: data.note || null } }), { status: 201 });
 }
