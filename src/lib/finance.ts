@@ -21,14 +21,12 @@ export function flatProgressiveTable(principal: number, baseRate: number, count:
   const total = round(principal * (1 + baseRate / 100) ** Math.max(1, count - 1));
   const effectiveRate = round((total / principal - 1) * 100);
   const payment = round(total / count);
-  let paid = 0;
   const rows = Array.from({ length: count }, (_, index) => {
-    const amount = index === count - 1 ? round(total - paid) : payment;
-    paid = round(paid + amount);
+    const paid = round(payment * (index + 1));
     return {
       number: index + 1,
-      amount,
-      interest: round(amount - principal / count),
+      amount: payment,
+      interest: round(payment - principal / count),
       amortization: round(principal / count),
       balance: round(Math.max(0, total - paid))
     };
