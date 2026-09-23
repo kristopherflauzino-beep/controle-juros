@@ -10,3 +10,42 @@ html,body{max-width:100%;overflow-x:hidden}.app{grid-template-columns:245px minm
 @media(max-width:430px){.cards{grid-template-columns:1fr}}
 @media(min-width:761px){.sidebar{position:fixed;top:0;bottom:0;left:0;width:245px;height:100dvh;overflow-y:auto}.main{grid-column:2}}
 @media(max-width:760px){.app{grid-template-columns:minmax(0,1fr)}.main{grid-column:1}.sidebar{height:100dvh;overflow-y:auto}}
+
+/* Ajustes de largura: o conteúdo deve caber sem mascarar overflow da página. */
+html,body{overflow-x:visible}
+.app,.main,.content,.panel,.card,.calc-grid,.grid-form,.summary,.detail-grid,.page-head,.toolbar,.row-actions,.primary-actions,.payment-actions{min-width:0}
+.topbar{gap:14px;min-width:0}
+.topbar h2{flex:1;min-width:0;overflow-wrap:anywhere}
+.topbar-date{min-width:0;text-align:right}
+.logo,.user-side,.page-head,.panel h3,.stat,.summary strong,.detail-grid strong,.modal-head h2{overflow-wrap:anywhere}
+.logo svg,.nav button svg{flex:0 0 auto}
+.nav button{width:100%;min-width:0;min-height:40px}
+.grid-form>*,.page-head>div{min-width:0}
+.table-wrap{width:100%;min-width:0}
+th,td{overflow-wrap:anywhere}
+.modal{min-width:0;width:min(820px,100%);overscroll-behavior:contain}
+.modal-actions,.actions{max-width:100%}
+
+@media(min-width:761px) and (max-width:900px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .main{grid-column:1}
+  .sidebar{left:-260px;z-index:30;transition:left .2s}
+  .sidebar.open{left:0}
+  .mobile-overlay.open{display:block;position:fixed;inset:0;background:#0008;z-index:25}
+  .menu-btn{display:grid;place-items:center;flex:0 0 40px;min-height:40px}
+  .topbar-date{display:none}
+  .content{padding:22px 20px}
+  .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:760px){
+  .menu-btn{display:grid;place-items:center;flex:0 0 40px;min-height:40px}
+  .topbar{gap:10px}
+  .row-actions .btn,.actions .btn,.modal-actions .btn{min-height:40px}
+  .toolbar>*{max-width:100%}
+}
+@media(max-width:430px){
+  .page-head>.btn{width:100%}
+  .modal-actions{gap:8px}
+  .modal-actions .btn{flex:1 1 100%}
+  .stat strong{font-size:clamp(21px,6vw,25px);overflow-wrap:anywhere}
+}
