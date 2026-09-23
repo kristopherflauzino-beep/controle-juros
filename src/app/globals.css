@@ -49,3 +49,25 @@ th,td{overflow-wrap:anywhere}
   .modal-actions .btn{flex:1 1 100%}
   .stat strong{font-size:clamp(21px,6vw,25px);overflow-wrap:anywhere}
 }
+
+/* Densidade móvel apenas no Dashboard e na área do Cliente. */
+@media(max-width:600px){
+  .dashboard-view,.client-view{padding:16px 12px}
+  .dashboard-view .page-head,.client-view .page-head{gap:8px;margin-bottom:16px}
+  .dashboard-view .page-head h1,.client-view .page-head h1{font-size:clamp(21px,6vw,24px)}
+  .dashboard-view .page-head p,.client-view .page-head p{font-size:13px;line-height:1.4}
+  .dashboard-view .cards{gap:10px;margin-bottom:16px}
+  .dashboard-view .stat{padding:14px}
+  .dashboard-view .stat span{display:block;line-height:1.35}
+  .dashboard-view .stat strong{font-size:clamp(20px,5.5vw,24px);line-height:1.2;margin-top:6px}
+  .dashboard-view .panel,.client-view .panel{padding:14px;margin-bottom:14px}
+  .dashboard-view .panel h3,.client-view .panel h3{font-size:17px;margin-bottom:12px}
+  .client-view .calc-grid{gap:0}
+  .client-view .summary{gap:8px;margin:12px 0}
+  .client-view .summary div{padding:11px}
+  .client-view .alert{font-size:13px;line-height:1.4}
+}
+@media(max-width:360px){
+  .dashboard-view,.client-view{padding:12px 8px}
+  .dashboard-view .stat,.dashboard-view .panel,.client-view .panel{padding:12px}
+}
