@@ -38,6 +38,12 @@ test("acordo de 2.400 em quatro parcelas gera quatro registros sincronizados", (
   assert.equal(result.rows.reduce((sum, row) => sum + row.amount, 0), 2400);
 });
 
+test("valor base de R$ 100 com 40% em duas parcelas gera 2 × R$ 70", () => {
+  const result = flatProgressiveTable(100, 40, 2);
+  assert.equal(result.total, 140);
+  assert.deepEqual(result.rows.map((row) => row.amount), [70, 70]);
+});
+
 test("total editado é distribuído sem perder centavos e preserva a fórmula atual", () => {
   const result = agreementTableFromTotal(2700.01, 2, 4);
   assert.equal(result.total, 2700.01);

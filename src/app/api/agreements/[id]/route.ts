@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { asNumber, fail, requireSession } from "@/lib/api";
-import { agreementTableFromTotal, dailyInterest, flatProgressiveTable, monthlyDueDate } from "@/lib/finance";
+import { dailyInterest, flatProgressiveTable, monthlyDueDate } from "@/lib/finance";
 
 const allowedStatuses = ["OPEN", "PAID", "LATE", "CANCELED"];
 const agreementNote = (previous: unknown, submitted: unknown) => {
@@ -36,28 +36,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json(paid);
   }
   const count = asNumber(d.installmentCount), rate = asNumber(d.interestRate);
-  const totalInput = d.totalAmount === "" || d.totalAmount == null ? null : asNumber(d.totalAmount);
-  const amount = totalInput === null ? asNumber(d.originalAmount) : totalInput;
+  // O valor digitado no editor é a base antes dos juros, como na criação.
+  // totalAmount continua aceito como nome legado do campo no frontend anterior.
+  const amount = asNumber(d.originalAmount ?? d.totalAmount);
   if (!(amount > 0) || !Number.isInteger(count) || !(count >= 1) || !Number.isFinite(rate) || rate < 0 || !d.dueDate) return fail("Dados financeiros inválidos");
   if (d.status && !allowedStatuses.includes(d.status)) return fail("Status inválido");
-  let calc: ReturnType<typeof flatProgressiveTable> | ReturnType<typeof agreementTableFromTotal>;
-  try { calc = totalInput === null ? flatProgressiveTable(amount, rate, count) : agreementTableFromTotal(totalInput, rate, count); }
+  let calc: ReturnType<typeof flatProgressiveTable>;
+  try { calc = flatProgressiveTable(amount, rate, count); }
   catch { return fail("Informe um valor válido para as parcelas"); }
-  const unchangedTotal = totalInput !== null && calc.total === Number(old.totalAmount) && count === old.installmentCount && rate === Number(old.interestRate);
-  const principal = totalInput === null ? amount : unchangedTotal ? Number(old.originalAmount) : "principal" in calc ? calc.principal : amount;
   const due = new Date(`${d.dueDate}T12:00:00.000Z`);
   if (isNaN(due.getTime())) return fail("Vencimento inválido");
   const dailyRateInput = d.dailyInterestRate === "" || d.dailyInterestRate == null ? null : asNumber(d.dailyInterestRate);
   if (dailyRateInput !== null && (!Number.isFinite(dailyRateInput) || dailyRateInput < 0)) return fail("Informe uma taxa de juros diário válida");
-  const structureChanged = principal !== Number(old.originalAmount) || calc.total !== Number(old.totalAmount) || count !== old.installmentCount || rate !== Number(old.interestRate) || due.toISOString().slice(0, 10) !== old.dueDate.toISOString().slice(0, 10);
+  const structureChanged = amount !== Number(old.originalAmount) || count !== old.installmentCount || rate !== Number(old.interestRate) || due.toISOString().slice(0, 10) !== old.dueDate.toISOString().slice(0, 10);
+  const agreementTotal = structureChanged ? calc.total : Number(old.totalAmount);
   const openAmount = structureChanged ? calc.total : d.openAmount === "" || d.openAmount == null ? Number(old.openAmount) : asNumber(d.openAmount);
-  if (!Number.isFinite(openAmount) || openAmount < 0 || (openAmount > calc.total && openAmount !== Number(old.openAmount))) return fail("Informe um valor em aberto válido");
+  if (!Number.isFinite(openAmount) || openAmount < 0 || (openAmount > agreementTotal && openAmount !== Number(old.openAmount))) return fail("Informe um valor em aberto válido");
   const financialChanged = structureChanged || openAmount !== Number(old.openAmount);
   if (structureChanged && await prisma.installment.count({ where: { agreementId: id, paid: true } })) return fail("Não é possível recalcular um acordo com parcelas pagas. Os pagamentos existentes foram preservados.", 409);
   try {
     const result = await prisma.$transaction(async tx => {
       if (structureChanged) await tx.installment.deleteMany({ where: { agreementId: id } });
-      return tx.agreement.update({ where: { id }, data: { originalAmount: principal, openAmount, installmentCount: count, interestRate: rate, installmentAmount: calc.payment, totalAmount: calc.total, dueDate: structureChanged ? due : old.dueDate, notes: agreementNote(old.notes, d.notes), status: d.status || old.status, dailyInterestRate: old.dailyInterestStartedAt ? old.dailyInterestRate : dailyRateInput, ...(financialChanged && old.dailyInterestStartedAt ? { dailyInterestBaseAmount: openAmount, dailyInterestStartedAt: new Date() } : {}), ...(structureChanged ? { installments: { create: calc.rows.map((row, i) => ({ ...row, dueDate: monthlyDueDate(due, i) })) } } : {}) }, include: { installments: { orderBy: { number: "asc" } } } });
+      return tx.agreement.update({ where: { id }, data: { originalAmount: amount, openAmount, installmentCount: count, interestRate: rate, installmentAmount: structureChanged ? calc.payment : old.installmentAmount, totalAmount: agreementTotal, dueDate: structureChanged ? due : old.dueDate, notes: agreementNote(old.notes, d.notes), status: d.status || old.status, dailyInterestRate: old.dailyInterestStartedAt ? old.dailyInterestRate : dailyRateInput, ...(financialChanged && old.dailyInterestStartedAt ? { dailyInterestBaseAmount: openAmount, dailyInterestStartedAt: new Date() } : {}), ...(structureChanged ? { installments: { create: calc.rows.map((row, i) => ({ ...row, dueDate: monthlyDueDate(due, i) })) } } : {}) }, include: { installments: { orderBy: { number: "asc" } } } });
     });
     return NextResponse.json(result);
   } catch { return fail("Não foi possível salvar o acordo.", 500); }

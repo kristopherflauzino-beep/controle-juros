@@ -61,7 +61,7 @@ function AgreementModal({value,clients,close,save}:any){
   return <Modal title={agreement?"Editar acordo":"Novo acordo"} close={close}>
     <form className="grid-form" onSubmit={e=>{e.preventDefault();const d:any=Object.fromEntries(new FormData(e.currentTarget));save(d,agreement?.id)}}>
       <Field label="Cliente"><select name="clientId" required defaultValue={clientId} disabled={!!agreement}>{!clientId&&<option value="">Selecione</option>}{clients.map((c:Client)=><option key={c.id} value={c.id}>{c.user.name}</option>)}</select></Field>
-      <Field label={agreement?"Valor total":"Valor financiado"}><input name={agreement?"totalAmount":"originalAmount"} type="number" inputMode="decimal" min="0.01" step="0.01" required defaultValue={agreement?.totalAmount||request?.amount}/></Field>
+      <Field label="Valor base (sem juros)"><input name="originalAmount" type="number" inputMode="decimal" min="0.01" step="0.01" required defaultValue={agreement?.originalAmount||request?.amount}/></Field>
       <Field label="Valor em aberto"><input name="openAmount" type="number" inputMode="decimal" min="0" step="0.01" defaultValue={agreement?.openAmount||request?.amount}/></Field>
       <Field label="Número de parcelas"><input name="installmentCount" type="number" inputMode="numeric" min="1" step="1" required defaultValue={agreement?.installmentCount||request?.installmentCount||2}/></Field>
       <Field label="Juros base (%)"><input name="interestRate" type="number" inputMode="decimal" min="0" step="0.0001" required defaultValue={agreement?.interestRate??request?.interestRate??40}/></Field>
