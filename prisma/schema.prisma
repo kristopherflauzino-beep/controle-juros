@@ -104,8 +104,10 @@ model Agreement {
   dueDate             DateTime
   status              AgreementStatus @default(OPEN)
   notes               String?
+  dailyInterestActive Boolean          @default(false)
   dailyInterestRate   Decimal?        @db.Decimal(8, 4)
   dailyInterestStartedAt DateTime?
+  dailyInterestBaseAmount Decimal?     @db.Decimal(14, 2)
   installments       Installment[]
   dailyInterestLogs  DailyInterestLog[]
   createdAt           DateTime        @default(now())

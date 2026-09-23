@@ -41,11 +41,45 @@ export function monthlyDueDate(firstDueDate: Date | string, monthOffset: number)
   const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
   return new Date(Date.UTC(year, month, Math.min(day, lastDay), 12));
 }
-export function dailyInterest(openAmount: number, rate: number, startedAt?: Date | string | null) {
-  if (!startedAt || rate <= 0) return { days: 0, accumulated: 0, updatedAmount: openAmount };
-  const start = new Date(startedAt); start.setHours(0, 0, 0, 0);
-  const now = new Date(); now.setHours(0, 0, 0, 0);
-  const days = Math.max(0, Math.floor((now.getTime() - start.getTime()) / 86400000));
-  const updatedAmount = openAmount * (1 + rate / 100) ** days;
-  return { days, accumulated: round(updatedAmount - openAmount), updatedAmount: round(updatedAmount) };
+export function dailyInterest(baseAmount: number, rate: number, startedAt?: Date | string | null, referenceDate: Date | string = new Date()) {
+  if (!Number.isFinite(baseAmount) || baseAmount < 0) throw new Error("Valor base inválido");
+  if (!Number.isFinite(rate) || rate < 0) throw new Error("Taxa diária inválida");
+  if (!startedAt) return { days: 0, accumulated: 0, updatedAmount: baseAmount };
+  const startTime = new Date(startedAt).getTime(), referenceTime = new Date(referenceDate).getTime();
+  if (!Number.isFinite(startTime) || !Number.isFinite(referenceTime)) throw new Error("Data de juros inválida");
+  const days = Math.max(0, Math.floor((referenceTime - startTime) / 86_400_000));
+  const updatedAmount = baseAmount * (1 + rate / 100) ** days;
+  return { days, accumulated: updatedAmount - baseAmount, updatedAmount };
+}
+
+export function agreementTableFromTotal(total: number, baseRate: number, count: number) {
+  if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(baseRate) || baseRate < 0 || !Number.isInteger(count) || count < 1) {
+    throw new Error("Parâmetros financeiros inválidos");
+  }
+  // Inverte a mesma fórmula usada em flatProgressiveTable para que o total
+  // informado pelo administrador seja exatamente o total salvo no acordo.
+  const factor = (1 + baseRate / 100) ** Math.max(1, count - 1);
+  const principal = round(total / factor);
+  if (!Number.isFinite(principal) || principal <= 0) throw new Error("Principal inválido para a taxa e o número de parcelas");
+  const cents = Math.round(total * 100);
+  if (cents < count) throw new Error("O total deve permitir parcelas de pelo menos R$ 0,01");
+  const principalCents = Math.round(principal * 100);
+  const baseCents = Math.floor(cents / count);
+  const basePrincipalCents = Math.floor(principalCents / count);
+  let paidCents = 0;
+  const rows = Array.from({ length: count }, (_, index) => {
+    const amountCents = baseCents + (index < cents % count ? 1 : 0);
+    paidCents += amountCents;
+    const amount = amountCents / 100;
+    const amortizationCents = basePrincipalCents + (index < principalCents % count ? 1 : 0);
+    const amortization = amortizationCents / 100;
+    return {
+      number: index + 1,
+      amount,
+      interest: (amountCents - amortizationCents) / 100,
+      amortization,
+      balance: round((cents - paidCents) / 100),
+    };
+  });
+  return { principal, payment: rows[0].amount, total: cents / 100, rows };
 }

@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
+    "test": "node --test --test-isolation=none tests/*.test.mjs",
     "start": "next start",
     "lint": "eslint .",
     "postinstall": "prisma generate",

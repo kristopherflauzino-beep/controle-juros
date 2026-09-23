@@ -12,8 +12,10 @@ export async function PATCH(req: NextRequest) {
   await prisma.$transaction(async tx => {
     await tx.installment.updateMany({ where: { id: { in: installmentIds } }, data: { paid: true } });
     for (const agreementId of agreementIds) {
+      const agreement = await tx.agreement.findUniqueOrThrow({ where: { id: agreementId }, select: { dailyInterestStartedAt: true } });
       const remaining = await tx.installment.aggregate({ where: { agreementId, paid: false }, _sum: { amount: true }, _count: true });
-      await tx.agreement.update({ where: { id: agreementId }, data: { openAmount: Number(remaining._sum.amount || 0), ...(remaining._count === 0 ? { status: "PAID", dailyInterestStartedAt: null } : {}) } });
+      const openAmount = Number(remaining._sum.amount || 0);
+      await tx.agreement.update({ where: { id: agreementId }, data: { openAmount, ...(remaining._count === 0 ? { status: "PAID", dailyInterestActive: false, dailyInterestStartedAt: null } : agreement.dailyInterestStartedAt ? { dailyInterestBaseAmount: openAmount, dailyInterestStartedAt: new Date() } : {}) } });
     }
   });
   return NextResponse.json({ ok: true });
