@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agreementTableFromTotal, dailyInterest, flatProgressiveTable, monthlyDueDate, reportInstallmentValue } from "../src/lib/finance.ts";
+import { agreementTableFromTotal, dailyInterest, flatProgressiveTable, monthlyDueDate, monthlyInstallmentTotal, reportInstallmentValue } from "../src/lib/finance.ts";
 
 const closeTo = (actual, expected, tolerance = 1e-10) => assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} deveria ser ${expected}`);
 
@@ -28,6 +28,22 @@ test("relatório distribui juros entre meses sem duplicar o valor do acordo", ()
   const november = reportInstallmentValue(70, 140, 140, 2, startedAt, referenceDate);
   closeTo(october + november, dailyInterest(140, 2, startedAt, referenceDate).updatedAmount);
   closeTo(reportInstallmentValue(70, 140, 140, 2, null, referenceDate), 70);
+});
+
+test("utilizado por mês soma parcelas do cliente e acompanha o relatório", () => {
+  const agreements = [
+    { clientId: "cliente-1", openAmount: "140", dailyInterestBaseAmount: "140", dailyInterestRate: "2", dailyInterestStartedAt: "2026-09-22T12:00:00Z", installments: [
+      { amount: "70", dueDate: "2026-10-08T12:00:00Z", paid: false },
+      { amount: "70", dueDate: "2026-11-08T12:00:00Z", paid: false },
+    ] },
+    { clientId: "cliente-1", openAmount: "30", installments: [{ amount: "30", dueDate: "2026-10-20T12:00:00Z", paid: true }] },
+    { clientId: "cliente-2", openAmount: "900", installments: [{ amount: "900", dueDate: "2026-10-08T12:00:00Z", paid: false }] },
+  ];
+  const referenceDate = "2026-09-24T12:00:00Z";
+  closeTo(monthlyInstallmentTotal(agreements, "cliente-1", "2026-10", referenceDate), 70 * 1.02 ** 2 + 30);
+  closeTo(monthlyInstallmentTotal(agreements, "cliente-1", "2026-11", referenceDate), 70 * 1.02 ** 2);
+  assert.equal(monthlyInstallmentTotal(agreements, "cliente-1", "2026-12", referenceDate), 0);
+  assert.equal(monthlyInstallmentTotal(agreements, "cliente-2", "2026-10", referenceDate), 900);
 });
 
 test("somente dias completos são contabilizados", () => {

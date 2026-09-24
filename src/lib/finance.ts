@@ -58,6 +58,26 @@ export function reportInstallmentValue(amount: number, unpaidTotal: number, base
   return amount + accrued * amount / unpaidTotal;
 }
 
+type MonthlyAgreement = {
+  clientId: string;
+  openAmount: number | string;
+  dailyInterestBaseAmount?: number | string | null;
+  dailyInterestRate?: number | string | null;
+  dailyInterestStartedAt?: Date | string | null;
+  installments: { amount: number | string; dueDate: Date | string; paid: boolean }[];
+};
+
+export function monthlyInstallmentTotal(agreements: MonthlyAgreement[], clientId: string, month: string, referenceDate: Date | string = new Date()) {
+  return agreements.filter(agreement => agreement.clientId === clientId).reduce((total, agreement) => {
+    const unpaidTotal = agreement.installments.filter(installment => !installment.paid).reduce((sum, installment) => sum + Number(installment.amount), 0);
+    return total + agreement.installments.reduce((sum, installment) => {
+      if (new Date(installment.dueDate).toISOString().slice(0, 7) !== month) return sum;
+      const amount = Number(installment.amount);
+      return sum + (installment.paid ? amount : reportInstallmentValue(amount, unpaidTotal, Number(agreement.dailyInterestBaseAmount ?? agreement.openAmount), Number(agreement.dailyInterestRate ?? 0), agreement.dailyInterestStartedAt, referenceDate));
+    }, 0);
+  }, 0);
+}
+
 export function agreementTableFromTotal(total: number, baseRate: number, count: number) {
   if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(baseRate) || baseRate < 0 || !Number.isInteger(count) || count < 1) {
     throw new Error("Parâmetros financeiros inválidos");

@@ -1,7 +1,7 @@
 "use client";
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { BarChart3, Calculator, CheckCircle2, ClipboardList, Eye, FileText, Handshake, LogOut, Menu, Plus, Search, Settings, Trash2, UserRound, Users, WalletCards } from "lucide-react";
-import { flatProgressiveTable, dailyInterest, reportInstallmentValue } from "@/lib/finance";
+import { flatProgressiveTable, dailyInterest, monthlyInstallmentTotal, reportInstallmentValue } from "@/lib/finance";
 import type { Session } from "@/lib/auth";
 
 type Client = { id:string; document?:string; phone?:string;monthlyLimit?:string;monthlyUsed?:number; user:{name:string;email:string;active:boolean;lastSeenAt?:string}; _count?:{agreements:number;requests:number} };
@@ -32,16 +32,20 @@ export default function Dashboard({session}:{session:Session}){
 function Head({title,text,action}:{title:string;text:string;action?:React.ReactNode}){return <div className="page-head"><div><h1>{title}</h1><p>{text}</p></div>{action}</div>}
 function AdminHome({clients,requests,agreements}:{clients:Client[];requests:Req[];agreements:Agreement[]}){const pending=agreements.filter(a=>a.status==="OPEN"||a.status==="LATE");const updated=pending.reduce((s,a)=>s+currentAgreementValue(a),0);const received=agreements.filter(a=>a.status==="PAID").reduce((s,a)=>s+Number(a.openAmount),0);return <><Head title="Visão geral" text="Acompanhe os números mais importantes do negócio."/><div className="cards"><Stat label="TOTAL DE CLIENTES" value={clients.length}/><Stat label="SOLICITAÇÕES PENDENTES" value={requests.filter(r=>r.status==="PENDING").length}/><Stat label="TOTAL PENDENTE" value={money(updated)}/><Stat label="TOTAL RECEBIDO" value={money(received)}/><Stat label="RELATÓRIOS EM ATRASO" value={agreements.filter(a=>a.status==="LATE").length}/></div><div className="panel dashboard-requests-panel"><h3>Últimas solicitações</h3><RequestTable rows={requests.slice(0,6)} responsive/></div></>}
 function Stat({label,value}:{label:string;value:any}){return <div className="card stat"><span>{label}</span><strong>{value}</strong><i>Atualizado agora</i></div>}
-function Clients({clients,agreements,now,onNew,onEdit,onDelete}:any){return <>
+function Clients({clients,agreements,now,onNew,onEdit,onDelete}:any){
+  const [month,setMonth]=useState(()=>new Date().toISOString().slice(0,7));
+  const months=useMemo(()=>Array.from(new Set([month,...(agreements as Agreement[]).flatMap(a=>a.installments.map(i=>new Date(i.dueDate).toISOString().slice(0,7)))])).sort().reverse(),[agreements,month]);
+  return <>
   <Head title="Clientes" text="Cadastre, gerencie o acesso e acompanhe o limite mensal." action={<button className="btn primary" onClick={onNew}><Plus/>Novo cliente</button>}/>
+  <div className="toolbar" style={{marginBottom:16}}><label htmlFor="clients-month">Mês de referência</label><select id="clients-month" value={month} onChange={e=>setMonth(e.target.value)}>{months.map(value=><option value={value} key={value}>{new Date(`${value}-01T12:00:00Z`).toLocaleDateString("pt-BR",{month:"long",year:"numeric",timeZone:"UTC"})}</option>)}</select><span className="muted">Parcelas do mês selecionado; comparação apenas informativa.</span></div>
   <div className="panel responsive-panel clients-panel"><div className="table-wrap"><table className="responsive-table clients-table"><thead><tr><th>Cliente</th><th>Presença</th><th>Limite mensal</th><th>Utilizado no mês</th><th>Em aberto</th><th>Status</th><th>Relatórios</th><th>Ações</th></tr></thead><tbody>{clients.map((c:Client)=>{
-    const limit=Number(c.monthlyLimit||0),used=Number(c.monthlyUsed||0),reached=limit>0&&used>=limit,lastSeen=c.user.lastSeenAt?new Date(c.user.lastSeenAt):null,online=!!lastSeen&&now-lastSeen.getTime()<90000;
+    const limit=Number(c.monthlyLimit||0),used=monthlyInstallmentTotal(agreements,c.id,month),difference=limit-used,lastSeen=c.user.lastSeenAt?new Date(c.user.lastSeenAt):null,online=!!lastSeen&&now-lastSeen.getTime()<90000;
     const openAmount=(agreements as Agreement[]).filter(a=>a.clientId===c.id&&(a.status==="OPEN"||a.status==="LATE")).reduce((sum,a)=>sum+currentAgreementValue(a),0);
     return <tr key={c.id}>
       <td data-label="Cliente"><div className="client-cell-content"><strong>{c.user.name}</strong><span className="muted">{c.user.email}</span></div></td>
       <td data-label="Presença"><div className="client-cell-content"><span className={`badge ${online?"green":"blue"}`}>{online?"Online":"Offline"}</span><span className="muted">{lastSeen?`Última visualização: ${lastSeen.toLocaleString("pt-BR")}`:"Nunca acessou"}</span></div></td>
       <td data-label="Limite mensal">{limit>0?money(limit):"Sem limite"}</td>
-      <td data-label="Utilizado no mês"><div className="client-cell-content">{money(used)}{reached&&<span className="badge red">Limite atingido</span>}</div></td>
+      <td data-label="Utilizado no mês"><div className="client-cell-content"><strong>{money(used)}</strong>{limit>0?<span className={`badge ${difference<0?"red":difference===0?"green":"blue"}`}>{difference<0?`${money(-difference)} acima do limite`:difference===0?"No limite":`${money(difference)} abaixo do limite`}</span>:<span className="muted">Sem limite definido</span>}</div></td>
       <td data-label="Em aberto"><strong>{money(openAmount)}</strong></td>
       <td data-label="Status"><span className={`badge ${c.user.active?"green":"red"}`}>{c.user.active?"Ativo":"Inativo"}</span></td>
       <td data-label="Relatórios">{c._count?.agreements||0}</td>
