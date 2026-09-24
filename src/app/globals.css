@@ -86,3 +86,39 @@ th,td{overflow-wrap:anywhere}
   .report-inline-details h3{font-size:17px}
   .report-inline-details table{min-width:0}
 }
+
+/* Dashboard e Clientes: leitura proporcional sem alargar a página. */
+.dashboard-request-table{min-width:850px}
+.clients-table{min-width:1000px}
+@media(max-width:1280px){
+  .clients-panel{padding:0;background:transparent;border:0;box-shadow:none}
+  .clients-table{min-width:0}
+  .clients-table thead{display:none}
+  .clients-table,.clients-table tbody,.clients-table tr,.clients-table td{display:block;width:100%}
+  .clients-table tr{background:#fff;border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin-bottom:12px;box-shadow:0 3px 14px rgba(18,35,62,.035)}
+  .clients-table td{display:flex;justify-content:space-between;align-items:flex-start;gap:14px;border-bottom:1px solid var(--line);padding:10px 0;text-align:right;overflow-wrap:anywhere}
+  .clients-table td:last-child{border-bottom:0}
+  .clients-table td::before{content:attr(data-label);font-size:11px;font-weight:800;text-transform:uppercase;color:var(--muted);text-align:left}
+  .clients-table td[data-label="Ações"]{display:block;text-align:left}
+  .clients-table td[data-label="Ações"]::before{display:block;margin-bottom:10px}
+  .clients-table .client-cell-content{min-width:0;max-width:62%;display:flex;flex-direction:column;align-items:flex-end;gap:4px;text-align:right;overflow-wrap:anywhere}
+  .clients-table td[data-label="Ações"] .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .clients-table td[data-label="Ações"] .btn{min-height:40px;flex:1 1 110px}
+}
+@media(max-width:760px){
+  .dashboard-request-table{min-width:0}
+  .dashboard-requests-panel{padding:10px}
+}
+@media(min-width:381px) and (max-width:760px){
+  .dashboard-view .cards{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .dashboard-view .stat:last-child{grid-column:span 2}
+}
+@media(min-width:381px) and (max-width:480px){
+  .dashboard-view .stat:nth-child(3),.dashboard-view .stat:nth-child(4){grid-column:span 2}
+}
+@media(max-width:380px){
+  .dashboard-view .cards{grid-template-columns:minmax(0,1fr)}
+  .clients-table td[data-label="Cliente"],.clients-table td[data-label="Presença"]{display:block;text-align:left}
+  .clients-table td[data-label="Cliente"]::before,.clients-table td[data-label="Presença"]::before{display:block;margin-bottom:5px}
+  .clients-table td[data-label="Cliente"] .client-cell-content,.clients-table td[data-label="Presença"] .client-cell-content{max-width:none;align-items:flex-start;text-align:left}
+}
