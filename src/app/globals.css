@@ -89,7 +89,7 @@ th,td{overflow-wrap:anywhere}
 
 /* Dashboard e Clientes: leitura proporcional sem alargar a página. */
 .dashboard-request-table{min-width:850px}
-.clients-table{min-width:1000px}
+.clients-table{min-width:1100px}
 @media(max-width:1280px){
   .clients-panel{padding:0;background:transparent;border:0;box-shadow:none}
   .clients-table{min-width:0}
