@@ -71,3 +71,18 @@ th,td{overflow-wrap:anywhere}
   .dashboard-view,.client-view{padding:12px 8px}
   .dashboard-view .stat,.dashboard-view .panel,.client-view .panel{padding:12px}
 }
+
+/* O detalhamento do mês acompanha a linha selecionada no Relatório. */
+.report-detail-cell{padding:0 12px 18px;background:#f8fafc}
+.report-inline-details{padding-top:18px}
+.report-inline-details h3{margin:0 0 14px}
+.report-inline-details .table-wrap{background:#fff}
+.report-inline-details table{min-width:1100px}
+@media(max-width:760px){
+  .report-table .report-detail-row{margin-top:-12px;padding:0;border:0;background:transparent;box-shadow:none}
+  .report-table .report-detail-cell{display:block;padding:0;border:0;text-align:left}
+  .report-table .report-detail-cell::before{display:none}
+  .report-inline-details{padding:14px 0 4px}
+  .report-inline-details h3{font-size:17px}
+  .report-inline-details table{min-width:0}
+}

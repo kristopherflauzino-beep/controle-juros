@@ -52,6 +52,12 @@ export function dailyInterest(baseAmount: number, rate: number, startedAt?: Date
   return { days, accumulated: updatedAmount - baseAmount, updatedAmount };
 }
 
+export function reportInstallmentValue(amount: number, unpaidTotal: number, baseAmount: number, rate: number, startedAt?: Date | string | null, referenceDate: Date | string = new Date()) {
+  if (!startedAt || unpaidTotal <= 0) return amount;
+  const accrued = dailyInterest(baseAmount, rate, startedAt, referenceDate).accumulated;
+  return amount + accrued * amount / unpaidTotal;
+}
+
 export function agreementTableFromTotal(total: number, baseRate: number, count: number) {
   if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(baseRate) || baseRate < 0 || !Number.isInteger(count) || count < 1) {
     throw new Error("Parâmetros financeiros inválidos");

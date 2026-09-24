@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agreementTableFromTotal, dailyInterest, flatProgressiveTable, monthlyDueDate } from "../src/lib/finance.ts";
+import { agreementTableFromTotal, dailyInterest, flatProgressiveTable, monthlyDueDate, reportInstallmentValue } from "../src/lib/finance.ts";
 
 const closeTo = (actual, expected, tolerance = 1e-10) => assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} deveria ser ${expected}`);
 
@@ -19,6 +19,15 @@ test("taxas 0%, 0,5%, 1%, 2% e 5% usam exponenciação", () => {
 
 test("registro antigo sem ativação permanece inalterado", () => {
   assert.deepEqual(dailyInterest(1000, 5, null, "2036-09-22T12:00:00Z"), { days: 0, accumulated: 0, updatedAmount: 1000 });
+});
+
+test("relatório distribui juros entre meses sem duplicar o valor do acordo", () => {
+  const startedAt = "2026-09-22T12:00:00Z";
+  const referenceDate = "2026-09-24T12:00:00Z";
+  const october = reportInstallmentValue(70, 140, 140, 2, startedAt, referenceDate);
+  const november = reportInstallmentValue(70, 140, 140, 2, startedAt, referenceDate);
+  closeTo(october + november, dailyInterest(140, 2, startedAt, referenceDate).updatedAmount);
+  closeTo(reportInstallmentValue(70, 140, 140, 2, null, referenceDate), 70);
 });
 
 test("somente dias completos são contabilizados", () => {
