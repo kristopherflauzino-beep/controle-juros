@@ -58,22 +58,65 @@ export function reportInstallmentValue(amount: number, unpaidTotal: number, base
   return amount + accrued * amount / unpaidTotal;
 }
 
+type MoneyValue = number | string | { toString(): string };
 type MonthlyAgreement = {
   clientId: string;
-  openAmount: number | string;
-  dailyInterestBaseAmount?: number | string | null;
-  dailyInterestRate?: number | string | null;
+  openAmount: MoneyValue;
+  receivedAmount?: MoneyValue | null;
+  dailyInterestBaseAmount?: MoneyValue | null;
+  dailyInterestRate?: MoneyValue | null;
   dailyInterestStartedAt?: Date | string | null;
-  installments: { amount: number | string; dueDate: Date | string; paid: boolean }[];
+  installments: { amount: MoneyValue; remainingAmount?: MoneyValue | null; dueDate: Date | string; paid: boolean }[];
 };
+
+export function installmentBalance(installment: MonthlyAgreement["installments"][number]) {
+  return Number(installment.remainingAmount ?? installment.amount);
+}
+
+export function reportAgreementInstallmentValue(agreement: MonthlyAgreement, installment: MonthlyAgreement["installments"][number], referenceDate: Date | string = new Date()) {
+  const amount = installmentBalance(installment);
+  if (installment.paid) return amount;
+  const unpaidTotal = agreement.installments.filter(item => !item.paid).reduce((sum, item) => sum + installmentBalance(item), 0);
+  if (unpaidTotal <= 0) return 0;
+  if (agreement.receivedAmount != null) {
+    const updated = dailyInterest(Number(agreement.dailyInterestBaseAmount ?? agreement.openAmount), Number(agreement.dailyInterestRate ?? 0), agreement.dailyInterestStartedAt, referenceDate).updatedAmount;
+    return updated * amount / unpaidTotal;
+  }
+  return reportInstallmentValue(amount, unpaidTotal, Number(agreement.dailyInterestBaseAmount ?? agreement.openAmount), Number(agreement.dailyInterestRate ?? 0), agreement.dailyInterestStartedAt, referenceDate);
+}
+
+export function capitalizedInstallmentCents(agreement: Omit<MonthlyAgreement, "installments"> & { installments: (MonthlyAgreement["installments"][number] & { id: string; number?: number })[] }, referenceDate: Date | string = new Date()) {
+  const unpaid = agreement.installments.filter(item => !item.paid).sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime() || (a.number ?? 0) - (b.number ?? 0));
+  const values = unpaid.map(item => reportAgreementInstallmentValue(agreement, item, referenceDate));
+  let centsLeft = Math.round(values.reduce((sum, value) => sum + value, 0) * 100);
+  if (!Number.isSafeInteger(centsLeft) || centsLeft < 0) throw new Error("Saldo financeiro inválido");
+  const balances = new Map<string, number>();
+  unpaid.forEach((item, index) => {
+    const value = index === unpaid.length - 1 ? centsLeft : Math.min(centsLeft, Math.round(values[index] * 100));
+    balances.set(item.id, value);
+    centsLeft -= value;
+  });
+  return balances;
+}
+
+export function allocatePartialPaymentCents(items: { id: string; balanceCents: number }[], paymentCents: number) {
+  const total = items.reduce((sum, item) => sum + item.balanceCents, 0);
+  if (!Number.isSafeInteger(paymentCents) || paymentCents <= 0 || paymentCents >= total) throw new Error("Pagamento parcial inválido");
+  let left = paymentCents;
+  const allocations = new Map<string, number>();
+  for (const item of items) {
+    const amount = Math.min(left, item.balanceCents);
+    if (amount > 0) allocations.set(item.id, amount);
+    left -= amount;
+  }
+  return allocations;
+}
 
 export function monthlyInstallmentTotal(agreements: MonthlyAgreement[], clientId: string, month: string, referenceDate: Date | string = new Date()) {
   return agreements.filter(agreement => agreement.clientId === clientId).reduce((total, agreement) => {
-    const unpaidTotal = agreement.installments.filter(installment => !installment.paid).reduce((sum, installment) => sum + Number(installment.amount), 0);
     return total + agreement.installments.reduce((sum, installment) => {
       if (new Date(installment.dueDate).toISOString().slice(0, 7) !== month) return sum;
-      const amount = Number(installment.amount);
-      return sum + (installment.paid ? amount : reportInstallmentValue(amount, unpaidTotal, Number(agreement.dailyInterestBaseAmount ?? agreement.openAmount), Number(agreement.dailyInterestRate ?? 0), agreement.dailyInterestStartedAt, referenceDate));
+      return sum + reportAgreementInstallmentValue(agreement, installment, referenceDate);
     }, 0);
   }, 0);
 }

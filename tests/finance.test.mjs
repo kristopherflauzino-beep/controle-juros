@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agreementTableFromTotal, dailyInterest, flatProgressiveTable, monthlyDueDate, monthlyInstallmentTotal, reportInstallmentValue } from "../src/lib/finance.ts";
+import { agreementTableFromTotal, allocatePartialPaymentCents, capitalizedInstallmentCents, dailyInterest, flatProgressiveTable, monthlyDueDate, monthlyInstallmentTotal, reportAgreementInstallmentValue, reportInstallmentValue } from "../src/lib/finance.ts";
 
 const closeTo = (actual, expected, tolerance = 1e-10) => assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} deveria ser ${expected}`);
 
@@ -44,6 +44,44 @@ test("utilizado por mês soma parcelas do cliente e acompanha o relatório", () 
   closeTo(monthlyInstallmentTotal(agreements, "cliente-1", "2026-11", referenceDate), 70 * 1.02 ** 2);
   assert.equal(monthlyInstallmentTotal(agreements, "cliente-1", "2026-12", referenceDate), 0);
   assert.equal(monthlyInstallmentTotal(agreements, "cliente-2", "2026-10", referenceDate), 900);
+});
+
+test("pagamento parcial do mês abate parcelas antigas e juros usa somente o saldo novo", () => {
+  const agreement = { clientId: "cliente-1", openAmount: "140", receivedAmount: null, installments: [
+    { id: "outubro", number: 1, amount: "70", dueDate: "2026-10-08T12:00:00Z", paid: false },
+    { id: "novembro", number: 2, amount: "70", dueDate: "2026-11-08T12:00:00Z", paid: false },
+  ] };
+  const before = capitalizedInstallmentCents(agreement, "2026-10-09T12:00:00Z");
+  assert.deepEqual([...before.values()], [7000, 7000]);
+  const allocations = allocatePartialPaymentCents([{ id: "outubro", balanceCents: before.get("outubro") }], 3000);
+  assert.equal(allocations.get("outubro"), 3000);
+  agreement.installments[0].remainingAmount = "40";
+  agreement.openAmount = "110";
+  agreement.receivedAmount = "30";
+  assert.equal(monthlyInstallmentTotal([agreement], "cliente-1", "2026-10"), 40);
+  assert.equal(monthlyInstallmentTotal([agreement], "cliente-1", "2026-11"), 70);
+  agreement.dailyInterestBaseAmount = "110";
+  agreement.dailyInterestRate = "2";
+  agreement.dailyInterestStartedAt = "2026-10-09T12:00:00Z";
+  const reference = "2026-10-11T12:00:00Z";
+  closeTo(reportAgreementInstallmentValue(agreement, agreement.installments[0], reference), 40 * 1.02 ** 2);
+  closeTo(reportAgreementInstallmentValue(agreement, agreement.installments[1], reference), 70 * 1.02 ** 2);
+  closeTo([...capitalizedInstallmentCents(agreement, reference).values()].reduce((sum, value) => sum + value, 0) / 100, 114.44, 0.01);
+  assert.throws(() => allocatePartialPaymentCents([{ id: "outubro", balanceCents: 4000 }], 4000));
+});
+
+test("pagamento parcial de mês com vários acordos segue a ordem de vencimento", () => {
+  const allocations = allocatePartialPaymentCents([
+    { id: "primeira", balanceCents: 5000 },
+    { id: "segunda", balanceCents: 7000 },
+    { id: "terceira", balanceCents: 4000 },
+  ], 8000);
+  assert.deepEqual([...allocations], [["primeira", 5000], ["segunda", 3000]]);
+  const centsAllocation = allocatePartialPaymentCents([
+    { id: "primeira", balanceCents: 7000 },
+    { id: "segunda", balanceCents: 7000 },
+  ], 7001);
+  assert.deepEqual([...centsAllocation], [["primeira", 7000], ["segunda", 1]]);
 });
 
 test("somente dias completos são contabilizados", () => {

@@ -96,6 +96,7 @@ model Agreement {
   request            Request?        @relation(fields: [requestId], references: [id], onDelete: SetNull)
   originalAmount     Decimal         @db.Decimal(14, 2)
   openAmount         Decimal         @db.Decimal(14, 2)
+  receivedAmount     Decimal?        @db.Decimal(14, 2)
   installmentCount   Int
   interestRate       Decimal         @db.Decimal(8, 4)
   installmentAmount  Decimal         @db.Decimal(14, 2)
@@ -109,6 +110,7 @@ model Agreement {
   dailyInterestStartedAt DateTime?
   dailyInterestBaseAmount Decimal?     @db.Decimal(14, 2)
   installments       Installment[]
+  partialPayments    PartialPayment[]
   dailyInterestLogs  DailyInterestLog[]
   createdAt           DateTime        @default(now())
   updatedAt           DateTime        @updatedAt
@@ -120,12 +122,28 @@ model Installment {
   agreement    Agreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
   number       Int
   amount       Decimal   @db.Decimal(14, 2)
+  remainingAmount Decimal? @db.Decimal(14, 2)
   interest     Decimal   @db.Decimal(14, 2)
   amortization Decimal   @db.Decimal(14, 2)
   balance      Decimal   @db.Decimal(14, 2)
   dueDate      DateTime
   paid         Boolean   @default(false)
+  partialPayments PartialPayment[]
   @@unique([agreementId, number])
+}
+
+model PartialPayment {
+  id            String      @id @default(cuid())
+  operationId   String
+  agreementId   String
+  agreement     Agreement   @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+  installmentId String
+  installment   Installment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+  amount        Decimal     @db.Decimal(14, 2)
+  createdAt     DateTime    @default(now())
+
+  @@unique([operationId, installmentId])
+  @@index([agreementId, createdAt])
 }
 
 model DailyInterestLog {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { asNumber, fail, requireSession } from "@/lib/api";
 import { dailyInterest, flatProgressiveTable, monthlyDueDate } from "@/lib/finance";
+import { Prisma } from "@prisma/client";
 
 const allowedStatuses = ["OPEN", "PAID", "LATE", "CANCELED"];
 const agreementNote = (previous: unknown, submitted: unknown) => {
@@ -28,12 +29,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (d.action === "mark-paid") {
     if (old.status === "PAID") return fail("Este acordo ja esta pago");
     if (old.status === "CANCELED") return fail("Um acordo cancelado nao pode ser recebido");
-    const paidAmount = dailyInterest(Number(old.dailyInterestBaseAmount ?? old.openAmount), Number(old.dailyInterestRate ?? 0), old.dailyInterestStartedAt).updatedAmount;
-    const paid = await prisma.$transaction(async tx => {
-      await tx.installment.updateMany({ where: { agreementId: id }, data: { paid: true } });
-      return tx.agreement.update({ where: { id }, data: { status: "PAID", openAmount: paidAmount, dailyInterestActive: false, dailyInterestStartedAt: null } });
-    });
-    return NextResponse.json(paid);
+    try {
+      const paid = await prisma.$transaction(async tx => {
+        const current = await tx.agreement.findUniqueOrThrow({ where: { id } });
+        if (current.status === "PAID" || current.status === "CANCELED") throw new Error("Este acordo já foi pago ou cancelado. Atualize o relatório.");
+        const paidAmount = dailyInterest(Number(current.dailyInterestBaseAmount ?? current.openAmount), Number(current.dailyInterestRate ?? 0), current.dailyInterestStartedAt).updatedAmount;
+        await tx.installment.updateMany({ where: { agreementId: id }, data: current.receivedAmount == null ? { paid: true } : { paid: true, remainingAmount: 0 } });
+        return tx.agreement.update({ where: { id }, data: current.receivedAmount == null
+          ? { status: "PAID", openAmount: paidAmount, dailyInterestActive: false, dailyInterestStartedAt: null }
+          : { status: "PAID", openAmount: 0, receivedAmount: Number(current.receivedAmount) + paidAmount, dailyInterestActive: false, dailyInterestBaseAmount: null, dailyInterestStartedAt: null } });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+      return NextResponse.json(paid);
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return fail("O relatório mudou durante o pagamento. Atualize e tente novamente.", 409);
+      return fail(error instanceof Error ? error.message : "Não foi possível registrar o pagamento.", 409);
+    }
   }
   const count = asNumber(d.installmentCount), rate = asNumber(d.interestRate);
   // O valor digitado no editor é a base antes dos juros, como na criação.
@@ -53,6 +63,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const openAmount = structureChanged ? calc.total : d.openAmount === "" || d.openAmount == null ? Number(old.openAmount) : asNumber(d.openAmount);
   if (!Number.isFinite(openAmount) || openAmount < 0 || (openAmount > agreementTotal && openAmount !== Number(old.openAmount))) return fail("Informe um valor em aberto válido");
   const financialChanged = structureChanged || openAmount !== Number(old.openAmount);
+  if (old.receivedAmount != null && financialChanged) return fail("Não é possível recalcular um acordo com pagamento parcial. Os valores recebidos foram preservados.", 409);
   if (structureChanged && await prisma.installment.count({ where: { agreementId: id, paid: true } })) return fail("Não é possível recalcular um acordo com parcelas pagas. Os pagamentos existentes foram preservados.", 409);
   try {
     const result = await prisma.$transaction(async tx => {

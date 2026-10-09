@@ -15,18 +15,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(await prisma.agreement.findMany({
       where,
       select: {
-        id: true, clientId: true, originalAmount: true, openAmount: true,
+        id: true, clientId: true, originalAmount: true, openAmount: true, receivedAmount: true,
         installmentCount: true, interestRate: true, installmentAmount: true,
         totalAmount: true, agreementDate: true, dueDate: true, status: true,
         notes: true, dailyInterestActive: true, dailyInterestRate: true,
         dailyInterestStartedAt: true, dailyInterestBaseAmount: true,
         client: { select: { user: { select: { name: true, email: true } } } },
-        installments: { select: { id: true, number: true, amount: true, interest: true, amortization: true, balance: true, dueDate: true, paid: true }, orderBy: { number: "asc" } }
+        installments: { select: { id: true, number: true, amount: true, remainingAmount: true, interest: true, amortization: true, balance: true, dueDate: true, paid: true, partialPayments: { select: { amount: true, createdAt: true }, orderBy: { createdAt: "asc" } } }, orderBy: { number: "asc" } }
       },
       orderBy: { dueDate: "asc" }
     }));
   }
-  return NextResponse.json(await prisma.agreement.findMany({ where, include: { client: { include: { user: { select: { name: true, email: true } } } }, installments: { orderBy: { number: "asc" } } }, orderBy: { dueDate: "asc" } }));
+  return NextResponse.json(await prisma.agreement.findMany({ where, include: { client: { include: { user: { select: { name: true, email: true } } } }, installments: { include: { partialPayments: { select: { amount: true, createdAt: true }, orderBy: { createdAt: "asc" } } }, orderBy: { number: "asc" } } }, orderBy: { dueDate: "asc" } }));
 }
 export async function POST(req: NextRequest) {
   const auth = await requireSession(req, "ADMIN"); if (auth.error) return auth.error;
