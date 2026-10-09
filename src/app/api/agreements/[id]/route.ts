@@ -51,6 +51,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const amount = asNumber(d.originalAmount ?? d.totalAmount);
   if (!(amount > 0) || !Number.isInteger(count) || !(count >= 1) || !Number.isFinite(rate) || rate < 0 || !d.dueDate) return fail("Dados financeiros inválidos");
   if (d.status && !allowedStatuses.includes(d.status)) return fail("Status inválido");
+  if (old.dailyInterestStartedAt && old.status !== "PAID" && (d.status === "PAID" || d.status === "CANCELED")) return fail("Juros diário ativo: para encerrar a cobrança, use o botão Pago.", 409);
   let calc: ReturnType<typeof flatProgressiveTable>;
   try { calc = flatProgressiveTable(amount, rate, count); }
   catch { return fail("Informe um valor válido para as parcelas"); }

@@ -13,6 +13,14 @@ test("juros diário é composto, preciso e determinístico", () => {
   });
 });
 
+test("juros diário continua após muitos dias sem prazo máximo", () => {
+  const start = "2026-01-01T12:00:00Z";
+  const afterOneYear = new Date(Date.parse(start) + 365 * 86_400_000);
+  const result = dailyInterest(100, 0.5, start, afterOneYear);
+  assert.equal(result.days, 365);
+  closeTo(result.updatedAmount, 100 * 1.005 ** 365);
+});
+
 test("taxas 0%, 0,5%, 1%, 2% e 5% usam exponenciação", () => {
   for (const rate of [0, 0.5, 1, 2, 5]) closeTo(dailyInterest(10, rate, "2026-09-22T12:00:00Z", "2026-09-25T12:00:00Z").updatedAmount, 10 * (1 + rate / 100) ** 3);
 });

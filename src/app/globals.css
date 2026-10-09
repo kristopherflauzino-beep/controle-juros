@@ -74,16 +74,27 @@ th,td{overflow-wrap:anywhere}
 
 /* O detalhamento do mês acompanha a linha selecionada no Relatório. */
 .report-main-actions{display:flex;align-items:stretch;gap:7px;min-width:0}
-.report-table .partial-payment-btn{background:#fff3cd;color:#835600}
+.report-table .partial-payment-btn{background:#fff3cd;color:#835600;padding:6px 8px;font-size:11px;line-height:1.15}
 .report-table .partial-payment-btn:hover{background:#ffe9a3}
+.report-status{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.daily-interest-indicator{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#fff0c2;color:#805300;font-size:11px;font-weight:800;line-height:1.2}
+.daily-interest-card{min-width:0;margin:16px 0;padding:16px;border:1px solid #f1d68b;border-radius:12px;background:#fffdf5}
+.daily-interest-card-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.daily-interest-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.daily-interest-values>div{min-width:0;padding:12px;border:1px solid #f4e8c2;border-radius:9px;background:#fff}
+.daily-interest-values span{display:block;margin-bottom:6px;color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;overflow-wrap:anywhere}
+.daily-interest-values strong{display:block;font-size:17px;overflow-wrap:anywhere}
 .report-detail-cell{padding:0 12px 18px;background:#f8fafc}
 .report-inline-details{padding-top:18px}
 .report-inline-details h3{margin:0 0 14px}
 .report-inline-details .table-wrap{background:#fff}
 .report-inline-details table{min-width:1100px}
 @media(max-width:760px){
-  .report-table .report-main-actions{display:grid;grid-template-columns:max-content minmax(0,1fr);width:100%}
+  .report-table .report-main-actions{display:grid;grid-template-columns:max-content max-content;justify-content:start;width:100%}
   .report-table .report-main-actions .btn{min-width:0}
+  .report-table td[data-label="Status"]::before{flex:0 0 auto;white-space:nowrap}
+  .report-table td[data-label="Status"] .report-status{justify-content:flex-end}
+  .daily-interest-values{grid-template-columns:repeat(2,minmax(0,1fr))}
   .report-table .report-detail-row{margin-top:-12px;padding:0;border:0;background:transparent;box-shadow:none}
   .report-table .report-detail-cell{display:block;padding:0;border:0;text-align:left}
   .report-table .report-detail-cell::before{display:none}
@@ -91,6 +102,7 @@ th,td{overflow-wrap:anywhere}
   .report-inline-details h3{font-size:17px}
   .report-inline-details table{min-width:0}
 }
+@media(max-width:360px){.daily-interest-values{grid-template-columns:1fr}}
 
 /* Dashboard e Clientes: leitura proporcional sem alargar a página. */
 .dashboard-request-table{min-width:850px}
