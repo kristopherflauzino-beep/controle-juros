@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agreementTableFromTotal, allocatePartialPaymentCents, capitalizedInstallmentCents, dailyInterest, flatProgressiveTable, monthlyDueDate, monthlyInstallmentTotal, reportAgreementInstallmentValue, reportInstallmentValue } from "../src/lib/finance.ts";
+import { agreementTableFromTotal, allocatePartialPaymentCents, capitalizedInstallmentCents, dailyInterest, flatProgressiveTable, monthlyDailyInterestSummary, monthlyDueDate, monthlyInstallmentTotal, reportAgreementInstallmentValue, reportInstallmentValue } from "../src/lib/finance.ts";
 
 const closeTo = (actual, expected, tolerance = 1e-10) => assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} deveria ser ${expected}`);
 
@@ -27,6 +27,34 @@ test("taxas 0%, 0,5%, 1%, 2% e 5% usam exponenciação", () => {
 
 test("registro antigo sem ativação permanece inalterado", () => {
   assert.deepEqual(dailyInterest(1000, 5, null, "2036-09-22T12:00:00Z"), { days: 0, accumulated: 0, updatedAmount: 1000 });
+});
+
+test("quadro mensal consolida juros de vários acordos em um único total", () => {
+  const first = { clientId: "cliente-1", openAmount: "53.60", dailyInterestBaseAmount: "53.60", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z", status: "OPEN", installments: [{ amount: "53.60", amortization: "40", dueDate: "2026-10-08T12:00:00Z", paid: false }] };
+  const second = { clientId: "cliente-1", openAmount: "460", dailyInterestBaseAmount: "460", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z", status: "OPEN", installments: [{ amount: "460", amortization: "400", dueDate: "2026-10-08T12:00:00Z", paid: false }] };
+  const items = [{ agreement: first, installment: first.installments[0] }, { agreement: second, installment: second.installments[0] }];
+  const summary = monthlyDailyInterestSummary(items, "2026-10-03T12:00:00Z");
+  closeTo(summary.originalWithoutInterest, 440);
+  closeTo(summary.originalTotal, 513.6);
+  closeTo(summary.baseTotal, 513.6);
+  closeTo(summary.currentTotal, 513.6 * 1.02 ** 2);
+  closeTo(summary.accruedInterest, summary.currentTotal - summary.baseTotal);
+  assert.deepEqual(summary.rates, [2]);
+  assert.deepEqual(summary.days, [2]);
+});
+
+test("quadro mensal mantém abatimento parcial e identifica taxas diferentes", () => {
+  const partial = { clientId: "cliente-1", openAmount: "40", receivedAmount: "30", dailyInterestBaseAmount: "40", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z", status: "OPEN", installments: [{ amount: "70", amortization: "50", remainingAmount: "40", dueDate: "2026-10-08T12:00:00Z", paid: false }] };
+  const other = { clientId: "cliente-1", openAmount: "30", dailyInterestBaseAmount: "30", dailyInterestRate: "1", dailyInterestStartedAt: "2026-10-02T12:00:00Z", status: "OPEN", installments: [{ amount: "30", amortization: "30", dueDate: "2026-10-08T12:00:00Z", paid: false }] };
+  const items = [{ agreement: partial, installment: partial.installments[0] }, { agreement: other, installment: other.installments[0] }];
+  const summary = monthlyDailyInterestSummary(items, "2026-10-03T12:00:00Z");
+  closeTo(summary.originalWithoutInterest, 80);
+  closeTo(summary.originalTotal, 100);
+  closeTo(summary.baseTotal, 70);
+  closeTo(summary.currentTotal, 40 * 1.02 ** 2 + 30 * 1.01);
+  assert.deepEqual(summary.rates, [1, 2]);
+  assert.deepEqual(summary.days, [1, 2]);
+  assert.equal(monthlyDailyInterestSummary([{ agreement: { ...other, dailyInterestStartedAt: null }, installment: other.installments[0] }], "2026-10-03T12:00:00Z"), null);
 });
 
 test("relatório distribui juros entre meses sem duplicar o valor do acordo", () => {

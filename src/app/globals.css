@@ -84,6 +84,8 @@ th,td{overflow-wrap:anywhere}
 .daily-interest-values>div{min-width:0;padding:12px;border:1px solid #f4e8c2;border-radius:9px;background:#fff}
 .daily-interest-values span{display:block;margin-bottom:6px;color:var(--muted);font-size:11px;font-weight:700;text-transform:uppercase;overflow-wrap:anywhere}
 .daily-interest-values strong{display:block;font-size:17px;overflow-wrap:anywhere}
+.installment-value{display:flex;flex-direction:column;align-items:flex-start;gap:3px;min-width:0}
+.installment-table td[data-label="Valor"] .muted{display:block;margin-top:4px}
 .report-detail-cell{padding:0 12px 18px;background:#f8fafc}
 .report-inline-details{padding-top:18px}
 .report-inline-details h3{margin:0 0 14px}
@@ -95,6 +97,7 @@ th,td{overflow-wrap:anywhere}
   .report-table td[data-label="Status"]::before{flex:0 0 auto;white-space:nowrap}
   .report-table td[data-label="Status"] .report-status{justify-content:flex-end}
   .daily-interest-values{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .report-inline-details .installment-value{align-items:flex-end;text-align:right}
   .report-table .report-detail-row{margin-top:-12px;padding:0;border:0;background:transparent;box-shadow:none}
   .report-table .report-detail-cell{display:block;padding:0;border:0;text-align:left}
   .report-table .report-detail-cell::before{display:none}
