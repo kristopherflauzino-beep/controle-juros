@@ -23,5 +23,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireSession(req, "ADMIN"); if (auth.error) return auth.error;
   const { id } = await params; const client = await prisma.client.findUnique({ where: { id } }); if (!client) return fail("Cliente nao encontrado", 404);
-  await prisma.user.delete({ where: { id: client.userId } }); return NextResponse.json({ ok: true });
+  try {
+    await prisma.$transaction(async tx => {
+      // A remoção integral do cliente deve liberar as referências internas de reparcelamento antes do cascade.
+      await tx.installment.updateMany({ where: { agreement: { clientId: id }, rescheduledIntoId: { not: null } }, data: { rescheduledIntoId: null } });
+      await tx.user.delete({ where: { id: client.userId } });
+    });
+    return NextResponse.json({ ok: true });
+  } catch { return fail("Não foi possível remover o cliente e seus registros.", 500); }
 }

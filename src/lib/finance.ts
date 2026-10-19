@@ -67,7 +67,7 @@ type MonthlyAgreement = {
   dailyInterestBaseAmount?: MoneyValue | null;
   dailyInterestRate?: MoneyValue | null;
   dailyInterestStartedAt?: Date | string | null;
-  installments: { amount: MoneyValue; remainingAmount?: MoneyValue | null; dueDate: Date | string; paid: boolean }[];
+  installments: { amount: MoneyValue; remainingAmount?: MoneyValue | null; rescheduledIntoId?: string | null; dueDate: Date | string; paid: boolean }[];
 };
 
 export function installmentBalance(installment: MonthlyAgreement["installments"][number]) {
@@ -106,7 +106,7 @@ export function monthlyDailyInterestSummary(items: { agreement: MonthlyAgreement
 }
 
 export function capitalizedInstallmentCents(agreement: Omit<MonthlyAgreement, "installments"> & { installments: (MonthlyAgreement["installments"][number] & { id: string; number?: number })[] }, referenceDate: Date | string = new Date()) {
-  const unpaid = agreement.installments.filter(item => !item.paid).sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime() || (a.number ?? 0) - (b.number ?? 0));
+  const unpaid = agreement.installments.filter(item => !item.paid && !item.rescheduledIntoId).sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime() || (a.number ?? 0) - (b.number ?? 0));
   const values = unpaid.map(item => reportAgreementInstallmentValue(agreement, item, referenceDate));
   let centsLeft = Math.round(values.reduce((sum, value) => sum + value, 0) * 100);
   if (!Number.isSafeInteger(centsLeft) || centsLeft < 0) throw new Error("Saldo financeiro inválido");
@@ -117,6 +117,15 @@ export function capitalizedInstallmentCents(agreement: Omit<MonthlyAgreement, "i
     centsLeft -= value;
   });
   return balances;
+}
+
+export function clientOutstandingCents(agreements: (Omit<MonthlyAgreement, "installments"> & { installments: (MonthlyAgreement["installments"][number] & { id: string; number?: number })[] })[], clientId: string, month: string | null = null, referenceDate: Date | string = new Date()) {
+  return agreements.filter(agreement => agreement.clientId === clientId && (agreement.status === "OPEN" || agreement.status === "LATE"))
+    .reduce((total, agreement) => {
+      const balances = capitalizedInstallmentCents(agreement, referenceDate);
+      return total + agreement.installments.filter(item => !item.paid && !item.rescheduledIntoId && (!month || new Date(item.dueDate).toISOString().slice(0, 7) === month))
+        .reduce((sum, item) => sum + (balances.get(item.id) || 0), 0);
+    }, 0);
 }
 
 export function allocatePartialPaymentCents(items: { id: string; balanceCents: number }[], paymentCents: number) {
@@ -135,6 +144,7 @@ export function allocatePartialPaymentCents(items: { id: string; balanceCents: n
 export function monthlyInstallmentTotal(agreements: MonthlyAgreement[], clientId: string, month: string, referenceDate: Date | string = new Date()) {
   return agreements.filter(agreement => agreement.clientId === clientId).reduce((total, agreement) => {
     return total + agreement.installments.reduce((sum, installment) => {
+      if (installment.rescheduledIntoId) return sum;
       if (new Date(installment.dueDate).toISOString().slice(0, 7) !== month) return sum;
       return sum + reportAgreementInstallmentValue(agreement, installment, referenceDate);
     }, 0);
@@ -171,4 +181,20 @@ export function agreementTableFromTotal(total: number, baseRate: number, count: 
     };
   });
   return { principal, payment: rows[0].amount, total: cents / 100, rows };
+}
+
+export function rescheduleTable(baseAmount: number, interestRate: number, count: number) {
+  const calculated = flatProgressiveTable(baseAmount, interestRate, count);
+  const totalCents = Math.round(calculated.total * 100), principalCents = Math.round(baseAmount * 100);
+  if (!Number.isSafeInteger(totalCents) || !Number.isSafeInteger(principalCents) || count > principalCents) throw new Error("Saldo insuficiente para o número de parcelas");
+  const amountPerRow = Math.floor(totalCents / count), principalPerRow = Math.floor(principalCents / count);
+  let paidCents = 0;
+  const rows = Array.from({ length: count }, (_, index) => {
+    const amountCents = amountPerRow + (index < totalCents % count ? 1 : 0);
+    const principalForRow = principalPerRow + (index < principalCents % count ? 1 : 0);
+    paidCents += amountCents;
+    return { number: index + 1, amount: amountCents / 100, interest: (amountCents - principalForRow) / 100,
+      amortization: principalForRow / 100, balance: (totalCents - paidCents) / 100 };
+  });
+  return { total: totalCents / 100, payment: rows[0].amount, rows };
 }

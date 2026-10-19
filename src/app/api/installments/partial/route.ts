@@ -22,10 +22,10 @@ export async function POST(req: NextRequest) {
   try {
     const result = await prisma.$transaction(async tx => {
       if (await tx.partialPayment.findFirst({ where: { operationId }, select: { id: true } })) throw new PaymentConflict("Este pagamento já foi registrado. Atualize o relatório.");
-      const selected = await tx.installment.findMany({ where: { id: { in: ids } }, select: { id: true, agreementId: true, dueDate: true, paid: true, agreement: { select: { clientId: true, status: true } } } });
+      const selected = await tx.installment.findMany({ where: { id: { in: ids } }, select: { id: true, agreementId: true, dueDate: true, paid: true, rescheduledIntoId: true, agreement: { select: { clientId: true, status: true } } } });
       if (selected.length !== ids.length) throw new PaymentConflict("Uma das parcelas não foi encontrada. Atualize o relatório.");
       const clientId = selected[0].agreement.clientId, month = monthOf(selected[0].dueDate);
-      if (selected.some(item => item.paid || item.agreement.clientId !== clientId || monthOf(item.dueDate) !== month || !["OPEN", "LATE"].includes(item.agreement.status))) throw new PaymentConflict("Selecione apenas parcelas pendentes do mesmo cliente e mês.");
+      if (selected.some(item => item.paid || item.rescheduledIntoId || item.agreement.clientId !== clientId || monthOf(item.dueDate) !== month || !["OPEN", "LATE"].includes(item.agreement.status))) throw new PaymentConflict("Selecione apenas parcelas pendentes do mesmo cliente e mês.");
 
       const agreementIds = [...new Set(selected.map(item => item.agreementId))];
       const agreements = await tx.agreement.findMany({ where: { id: { in: agreementIds } }, include: { installments: true } });
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
       for (const agreement of agreements) {
         if (!agreement.installments.some(item => allocations.has(item.id))) continue;
         let openCents = 0, receivedCents = 0;
-        for (const item of agreement.installments.filter(item => !item.paid)) {
+        for (const item of agreement.installments.filter(item => !item.paid && !item.rescheduledIntoId)) {
           const allocated = allocations.get(item.id) || 0;
           const balance = (effectiveCents.get(item.id) || 0) - allocated;
           openCents += balance;

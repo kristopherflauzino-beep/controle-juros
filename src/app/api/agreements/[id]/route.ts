@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { asNumber, fail, requireSession } from "@/lib/api";
-import { dailyInterest, flatProgressiveTable, monthlyDueDate } from "@/lib/finance";
+import { capitalizedInstallmentCents, flatProgressiveTable, monthlyDueDate } from "@/lib/finance";
 import { Prisma } from "@prisma/client";
 
 const allowedStatuses = ["OPEN", "PAID", "LATE", "CANCELED"];
@@ -31,10 +31,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (old.status === "CANCELED") return fail("Um acordo cancelado nao pode ser recebido");
     try {
       const paid = await prisma.$transaction(async tx => {
-        const current = await tx.agreement.findUniqueOrThrow({ where: { id } });
+        const current = await tx.agreement.findUniqueOrThrow({ where: { id }, include: { installments: true } });
         if (current.status === "PAID" || current.status === "CANCELED") throw new Error("Este acordo já foi pago ou cancelado. Atualize o relatório.");
-        const paidAmount = dailyInterest(Number(current.dailyInterestBaseAmount ?? current.openAmount), Number(current.dailyInterestRate ?? 0), current.dailyInterestStartedAt).updatedAmount;
-        await tx.installment.updateMany({ where: { agreementId: id }, data: current.receivedAmount == null ? { paid: true } : { paid: true, remainingAmount: 0 } });
+        const paidAmount = [...capitalizedInstallmentCents(current).values()].reduce((sum, cents) => sum + cents, 0) / 100;
+        if (paidAmount <= 0) throw new Error("Não há saldo pendente para quitar neste acordo.");
+        await tx.installment.updateMany({ where: { agreementId: id, paid: false, rescheduledIntoId: null }, data: current.receivedAmount == null ? { paid: true } : { paid: true, remainingAmount: 0 } });
         return tx.agreement.update({ where: { id }, data: current.receivedAmount == null
           ? { status: "PAID", openAmount: paidAmount, dailyInterestActive: false, dailyInterestStartedAt: null }
           : { status: "PAID", openAmount: 0, receivedAmount: Number(current.receivedAmount) + paidAmount, dailyInterestActive: false, dailyInterestBaseAmount: null, dailyInterestStartedAt: null } });
@@ -45,6 +46,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       return fail(error instanceof Error ? error.message : "Não foi possível registrar o pagamento.", 409);
     }
   }
+  if (await prisma.installment.count({ where: { agreementId: id, rescheduledIntoId: { not: null } } })) return fail("Este acordo tem parcelas reparceladas. Seus valores originais foram preservados como histórico.", 409);
   const count = asNumber(d.installmentCount), rate = asNumber(d.interestRate);
   // O valor digitado no editor é a base antes dos juros, como na criação.
   // totalAmount continua aceito como nome legado do campo no frontend anterior.
@@ -78,7 +80,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireSession(req, "ADMIN"); if (auth.error) return auth.error;
   const { id } = await params;
-  if (!await prisma.agreement.findUnique({ where: { id }, select: { id: true } })) return fail("Registro não encontrado", 404);
+  const agreement = await prisma.agreement.findUnique({ where: { id }, select: { id: true, rescheduleOperationId: true, _count: { select: { rescheduledInstallments: true, installments: { where: { rescheduledIntoId: { not: null } } } } } } });
+  if (!agreement) return fail("Registro não encontrado", 404);
+  if (agreement.rescheduleOperationId || agreement._count.rescheduledInstallments || agreement._count.installments) return fail("Este registro faz parte de um reparcelamento e deve ser preservado como histórico.", 409);
   try {
     await prisma.$transaction(async tx => {
       await tx.dailyInterestLog.deleteMany({ where: { agreementId: id } });

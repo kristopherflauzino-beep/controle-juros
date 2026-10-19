@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agreementTableFromTotal, allocatePartialPaymentCents, capitalizedInstallmentCents, dailyInterest, flatProgressiveTable, monthlyDailyInterestSummary, monthlyDueDate, monthlyInstallmentTotal, reportAgreementInstallmentValue, reportInstallmentValue } from "../src/lib/finance.ts";
+import { agreementTableFromTotal, allocatePartialPaymentCents, capitalizedInstallmentCents, clientOutstandingCents, dailyInterest, flatProgressiveTable, monthlyDailyInterestSummary, monthlyDueDate, monthlyInstallmentTotal, reportAgreementInstallmentValue, reportInstallmentValue, rescheduleTable } from "../src/lib/finance.ts";
 
 const closeTo = (actual, expected, tolerance = 1e-10) => assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} deveria ser ${expected}`);
 
@@ -27,6 +27,60 @@ test("taxas 0%, 0,5%, 1%, 2% e 5% usam exponenciação", () => {
 
 test("registro antigo sem ativação permanece inalterado", () => {
   assert.deepEqual(dailyInterest(1000, 5, null, "2036-09-22T12:00:00Z"), { days: 0, accumulated: 0, updatedAmount: 1000 });
+});
+
+test("reparcelamento soma apenas saldos ativos e preserva pagamentos anteriores", () => {
+  const reference = "2026-10-03T12:00:00Z";
+  const first = { clientId: "cliente-1", status: "OPEN", openAmount: "80", receivedAmount: "20", dailyInterestBaseAmount: "80", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z", installments: [
+    { id: "paga", amount: "20", remainingAmount: "0", dueDate: reference, paid: true },
+    { id: "aberta", amount: "100", remainingAmount: "80", dueDate: reference, paid: false },
+  ] };
+  const second = { clientId: "cliente-1", status: "LATE", openAmount: "50", installments: [{ id: "outra", amount: "50", dueDate: reference, paid: false }] };
+  const consolidated = { ...second, installments: [{ id: "historica", amount: "900", remainingAmount: "0", rescheduledIntoId: "novo-acordo", dueDate: reference, paid: false }] };
+  assert.equal(clientOutstandingCents([first, second, consolidated], "cliente-1", null, reference), 8323 + 5000);
+  assert.equal(clientOutstandingCents([first, second, consolidated], "outro-cliente", null, reference), 0);
+  assert.equal(clientOutstandingCents([first, second], "cliente-1", "2026-11", reference), 0);
+  assert.equal(monthlyInstallmentTotal([consolidated], "cliente-1", "2026-10", reference), 0);
+});
+
+test("mês específico usa só parcelas escolhidas, mesmo dentro de um acordo maior", () => {
+  const agreement = { clientId: "cliente-1", status: "OPEN", openAmount: "200", installments: [
+    { id: "outubro", amount: "100", dueDate: "2026-10-08T12:00:00Z", paid: false },
+    { id: "novembro", amount: "100", dueDate: "2026-11-08T12:00:00Z", paid: false },
+  ] };
+  assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-10"), 10000);
+  assert.equal(clientOutstandingCents([agreement], "cliente-1"), 20000);
+  agreement.installments[0].rescheduledIntoId = "novo-acordo";
+  agreement.installments[0].remainingAmount = "0";
+  assert.equal(clientOutstandingCents([agreement], "cliente-1"), 10000);
+  assert.equal(monthlyInstallmentTotal([agreement], "cliente-1", "2026-10"), 0);
+  assert.equal(monthlyInstallmentTotal([agreement], "cliente-1", "2026-11"), 100);
+});
+
+test("novo juros de 40% sobre R$ 100 em duas parcelas gera 2x R$ 70", () => {
+  const schedule = rescheduleTable(100, 40, 2);
+  assert.equal(schedule.total, 140);
+  assert.deepEqual(schedule.rows.map(row => row.amount), [70, 70]);
+  assert.equal(schedule.rows.reduce((sum, row) => sum + row.amortization, 0), 100);
+  const uneven = rescheduleTable(100, 0, 3);
+  assert.equal(uneven.rows.reduce((sum, row) => sum + Math.round(row.amount * 100), 0), 10000);
+});
+
+test("reparcelar um mês congela sua parte do juros diário e mantém o outro mês ativo", () => {
+  const agreement = { clientId: "cliente-1", status: "OPEN", openAmount: "200", dailyInterestBaseAmount: "200", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z", installments: [
+    { id: "outubro", amount: "100", dueDate: "2026-10-08T12:00:00Z", paid: false },
+    { id: "novembro", amount: "100", dueDate: "2026-11-08T12:00:00Z", paid: false },
+  ] };
+  const transferAt = "2026-10-03T12:00:00Z";
+  assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-10", transferAt), 10404);
+  agreement.installments[0].rescheduledIntoId = "novo-acordo";
+  agreement.installments[0].remainingAmount = "0";
+  agreement.installments[1].remainingAmount = "104.04";
+  agreement.openAmount = "104.04";
+  agreement.dailyInterestBaseAmount = "104.04";
+  agreement.dailyInterestStartedAt = transferAt;
+  assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-10", "2026-10-04T12:00:00Z"), 0);
+  assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-11", "2026-10-04T12:00:00Z"), 10612);
 });
 
 test("quadro mensal consolida juros de vários acordos em um único total", () => {

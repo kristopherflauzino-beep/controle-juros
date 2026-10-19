@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
         notes: true, dailyInterestActive: true, dailyInterestRate: true,
         dailyInterestStartedAt: true, dailyInterestBaseAmount: true,
         client: { select: { user: { select: { name: true, email: true } } } },
-        installments: { select: { id: true, number: true, amount: true, remainingAmount: true, interest: true, amortization: true, balance: true, dueDate: true, paid: true, partialPayments: { select: { amount: true, createdAt: true }, orderBy: { createdAt: "asc" } } }, orderBy: { number: "asc" } }
+        installments: { select: { id: true, number: true, amount: true, remainingAmount: true, rescheduledIntoId: true, rescheduledAt: true, rescheduledAmount: true, interest: true, amortization: true, balance: true, dueDate: true, paid: true, partialPayments: { select: { amount: true, createdAt: true }, orderBy: { createdAt: "asc" } } }, orderBy: { number: "asc" } }
       },
       orderBy: { dueDate: "asc" }
     }));

@@ -5,9 +5,11 @@ import { fail, requireSession } from "@/lib/api";
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireSession(req, "ADMIN"); if (auth.error) return auth.error;
   const { id } = await params;
-  const installment = await prisma.installment.findUnique({ where: { id }, select: { id: true, agreementId: true } });
+  const installment = await prisma.installment.findUnique({ where: { id }, select: { id: true, agreementId: true, rescheduledIntoId: true } });
   if (!installment) return fail("Parcela nao encontrada", 404);
-  if (await prisma.agreement.findUnique({ where: { id: installment.agreementId }, select: { receivedAmount: true } }).then(agreement => agreement?.receivedAmount != null)) return fail("Não é possível excluir parcelas de um acordo com pagamento parcial. O histórico foi preservado.", 409);
+  const agreementToCheck = await prisma.agreement.findUnique({ where: { id: installment.agreementId }, select: { receivedAmount: true, rescheduleOperationId: true, installments: { where: { rescheduledIntoId: { not: null } }, select: { id: true }, take: 1 } } });
+  if (installment.rescheduledIntoId || agreementToCheck?.rescheduleOperationId || agreementToCheck?.installments.length) return fail("Parcelas de um reparcelamento ou de sua origem devem ser preservadas.", 409);
+  if (agreementToCheck?.receivedAmount != null) return fail("Não é possível excluir parcelas de um acordo com pagamento parcial. O histórico foi preservado.", 409);
 
   const result = await prisma.$transaction(async tx => {
     await tx.installment.delete({ where: { id } });
