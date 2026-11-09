@@ -16,6 +16,20 @@ export async function PATCH(req: NextRequest) {
       for (const agreementId of [...new Set(selected.map(item => item.agreementId))]) {
         const agreement = await tx.agreement.findUniqueOrThrow({ where: { id: agreementId }, include: { installments: true } });
         if (agreement.status === "CANCELED" || agreement.status === "PAID") throw new Error("Não é possível receber parcelas de um acordo pago ou cancelado.");
+        if (agreement.installments.some(item => item.dailyInterestActive)) {
+          const effectiveCents = capitalizedInstallmentCents(agreement, new Date());
+          let paidCents = 0, openCents = 0;
+          for (const item of agreement.installments.filter(item => !item.paid && !item.rescheduledIntoId)) {
+            if (selectedIds.has(item.id)) {
+              const value = effectiveCents.get(item.id) || 0;
+              paidCents += value;
+              await tx.installment.update({ where: { id: item.id }, data: { paid: true, remainingAmount: value / 100, dailyInterestActive: false, dailyInterestStartedAt: null, dailyInterestBaseAmount: null } });
+            } else openCents += Math.round(Number(item.remainingAmount ?? item.amount) * 100);
+          }
+          const previouslyReceived = agreement.receivedAmount == null ? agreement.installments.filter(item => item.paid).reduce((sum, item) => sum + Math.round(Number(item.remainingAmount ?? item.amount) * 100), 0) : Math.round(Number(agreement.receivedAmount) * 100);
+          await tx.agreement.update({ where: { id: agreementId }, data: { openAmount: openCents / 100, receivedAmount: (previouslyReceived + paidCents) / 100, status: openCents === 0 ? "PAID" : agreement.status } });
+          continue;
+        }
         if (agreement.receivedAmount == null) {
           if (agreement.installments.some(item => item.rescheduledIntoId)) {
             const now = new Date(), effectiveCents = capitalizedInstallmentCents(agreement, now);
@@ -30,14 +44,14 @@ export async function PATCH(req: NextRequest) {
               openAmount: openCents / 100,
               receivedAmount: agreement.installments.filter(item => item.paid).reduce((sum, item) => sum + Number(item.amount), 0) + paidCents / 100,
               status: openCents === 0 ? "PAID" : agreement.status,
-              ...(agreement.dailyInterestStartedAt ? { dailyInterestActive: openCents > 0, dailyInterestBaseAmount: openCents ? openCents / 100 : null, dailyInterestStartedAt: openCents ? now : null } : {}),
+              ...(agreement.dailyInterestActive && agreement.dailyInterestStartedAt ? { dailyInterestActive: openCents > 0, dailyInterestBaseAmount: openCents ? openCents / 100 : null, dailyInterestStartedAt: openCents ? now : null } : {}),
             } });
             continue;
           }
           await tx.installment.updateMany({ where: { agreementId, id: { in: installmentIds } }, data: { paid: true } });
           const remaining = await tx.installment.findMany({ where: { agreementId, paid: false, rescheduledIntoId: null }, select: { amount: true, remainingAmount: true } });
           const openAmount = remaining.reduce((sum, item) => sum + Number(item.remainingAmount ?? item.amount), 0);
-          await tx.agreement.update({ where: { id: agreementId }, data: { openAmount, ...(remaining.length === 0 ? { status: "PAID", dailyInterestActive: false, dailyInterestStartedAt: null } : agreement.dailyInterestStartedAt ? { dailyInterestBaseAmount: openAmount, dailyInterestStartedAt: new Date() } : {}) } });
+          await tx.agreement.update({ where: { id: agreementId }, data: { openAmount, ...(remaining.length === 0 ? { status: "PAID", dailyInterestActive: false } : agreement.dailyInterestActive && agreement.dailyInterestStartedAt ? { dailyInterestBaseAmount: openAmount, dailyInterestStartedAt: new Date() } : {}) } });
           continue;
         }
 
@@ -55,7 +69,7 @@ export async function PATCH(req: NextRequest) {
           openAmount: openCents / 100,
           receivedAmount: Number(agreement.receivedAmount) + paidCents / 100,
           status: openCents === 0 ? "PAID" : agreement.status,
-          ...(agreement.dailyInterestStartedAt ? { dailyInterestActive: openCents > 0, dailyInterestBaseAmount: openCents > 0 ? openCents / 100 : null, dailyInterestStartedAt: openCents > 0 ? now : null } : {}),
+          ...(agreement.dailyInterestActive && agreement.dailyInterestStartedAt ? { dailyInterestActive: openCents > 0, dailyInterestBaseAmount: openCents > 0 ? openCents / 100 : null, dailyInterestStartedAt: openCents > 0 ? now : null } : {}),
         } });
       }
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });

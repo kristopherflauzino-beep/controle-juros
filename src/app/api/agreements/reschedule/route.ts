@@ -54,18 +54,16 @@ export async function POST(req: NextRequest) {
         if (!selected.length) continue;
         const selectedIds = new Set(selected.map(item => item.id));
         const remaining = source.installments.filter(item => !item.paid && !item.rescheduledIntoId && !selectedIds.has(item.id));
-        const remainingCents = remaining.reduce((sum, item) => sum + (balances.get(item.id) || 0), 0);
+        const remainingCents = remaining.reduce((sum, item) => sum + Math.round(Number(item.remainingAmount ?? item.amount) * 100), 0);
         for (const item of selected) {
-          const updated = await tx.installment.updateMany({ where: { id: item.id, paid: false, rescheduledIntoId: null }, data: { remainingAmount: 0, rescheduledIntoId: created.id, rescheduledAt: now, rescheduledAmount: (balances.get(item.id) || 0) / 100 } });
+          const updated = await tx.installment.updateMany({ where: { id: item.id, paid: false, rescheduledIntoId: null }, data: { remainingAmount: 0, rescheduledIntoId: created.id, rescheduledAt: now, rescheduledAmount: (balances.get(item.id) || 0) / 100, dailyInterestActive: false, dailyInterestStartedAt: null, dailyInterestBaseAmount: null } });
           if (updated.count !== 1) throw new RescheduleConflict("Uma parcela mudou durante o reparcelamento. Atualize a tela e tente novamente.");
         }
-        for (const item of remaining) await tx.installment.update({ where: { id: item.id }, data: { remainingAmount: (balances.get(item.id) || 0) / 100 } });
-        const oldInterest = source.dailyInterestStartedAt ? ` Juros diário de ${Number(source.dailyInterestRate ?? 0)}% iniciado em ${source.dailyInterestStartedAt.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} congelado para as parcelas transferidas.` : "";
+        const oldInterest = selected.some(item => item.dailyInterestActive) ? " Juros diário das parcelas transferidas congelado na confirmação." : "";
         const note = `${stamp} - Acordo: ${month ? `parcelas de ${month}` : "saldo total"} transferidas para o registro ${created.id}.${oldInterest}`;
         const updated = await tx.agreement.updateMany({ where: { id: source.id, updatedAt: source.updatedAt, status: { in: ["OPEN", "LATE"] } }, data: {
           openAmount: remainingCents / 100, status: remainingCents ? source.status : "CANCELED",
           notes: `${String(source.notes || "").trim()}${source.notes ? "\n" : ""}${note}`,
-          ...(source.dailyInterestStartedAt ? { dailyInterestActive: remainingCents > 0, dailyInterestBaseAmount: remainingCents ? remainingCents / 100 : null, dailyInterestStartedAt: remainingCents ? now : null } : {}),
         } });
         if (updated.count !== 1) throw new RescheduleConflict("Um acordo mudou durante o reparcelamento. Atualize a tela e tente novamente.");
       }

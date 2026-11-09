@@ -29,11 +29,39 @@ test("registro antigo sem ativação permanece inalterado", () => {
   assert.deepEqual(dailyInterest(1000, 5, null, "2036-09-22T12:00:00Z"), { days: 0, accumulated: 0, updatedAmount: 1000 });
 });
 
+test("juros diário de novembro não altera parcelas de outubro ou dezembro", () => {
+  const reference = "2026-11-11T12:00:00Z";
+  const agreement = { clientId: "cliente-1", status: "OPEN", openAmount: "300", dailyInterestActive: false,
+    dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z", installments: [
+      { id: "outubro", amount: "50", dueDate: "2026-10-08T12:00:00Z", paid: false, dailyInterestActive: false },
+      { id: "novembro", amount: "200", dueDate: "2026-11-08T12:00:00Z", paid: false, dailyInterestActive: true, dailyInterestRate: "2", dailyInterestBaseAmount: "200", dailyInterestStartedAt: "2026-11-09T12:00:00Z", amortization: "200" },
+      { id: "dezembro", amount: "50", dueDate: "2026-12-08T12:00:00Z", paid: false, dailyInterestActive: false },
+    ] };
+  assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-10", reference), 5000);
+  assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-12", reference), 5000);
+  assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-11", reference), 20808);
+  assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-11", reference), 20808);
+  assert.equal(clientOutstandingCents([agreement], "cliente-1", null, reference), 30808);
+  assert.equal(monthlyDailyInterestSummary([{ agreement, installment: agreement.installments[0] }], reference), null);
+  const summary = monthlyDailyInterestSummary([{ agreement, installment: agreement.installments[1] }], reference);
+  closeTo(summary.currentTotal, 208.08);
+  closeTo(summary.accruedInterest, 8.08);
+});
+
+test("mês selecionado soma o valor integral pendente de vários acordos", () => {
+  const reference = "2026-11-11T12:00:00Z";
+  const agreements = [100, 200].map((amount, index) => ({ clientId: "cliente-1", status: "OPEN", openAmount: String(amount), dailyInterestActive: false,
+    installments: [{ id: `parcela-${index}`, amount: String(amount), dueDate: "2026-11-20T12:00:00Z", paid: false, dailyInterestActive: true, dailyInterestRate: "2", dailyInterestBaseAmount: String(amount), dailyInterestStartedAt: "2026-11-09T12:00:00Z", amortization: String(amount) }] }));
+  assert.equal(clientOutstandingCents(agreements, "cliente-1", "2026-11", reference), 31212);
+  const summary = monthlyDailyInterestSummary(agreements.map(agreement => ({ agreement, installment: agreement.installments[0] })), reference);
+  closeTo(summary.currentTotal, 300 * 1.02 ** 2);
+});
+
 test("reparcelamento soma apenas saldos ativos e preserva pagamentos anteriores", () => {
   const reference = "2026-10-03T12:00:00Z";
   const first = { clientId: "cliente-1", status: "OPEN", openAmount: "80", receivedAmount: "20", dailyInterestBaseAmount: "80", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z", installments: [
     { id: "paga", amount: "20", remainingAmount: "0", dueDate: reference, paid: true },
-    { id: "aberta", amount: "100", remainingAmount: "80", dueDate: reference, paid: false },
+    { id: "aberta", amount: "100", remainingAmount: "80", dueDate: reference, paid: false, dailyInterestActive: true, dailyInterestBaseAmount: "80", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z" },
   ] };
   const second = { clientId: "cliente-1", status: "LATE", openAmount: "50", installments: [{ id: "outra", amount: "50", dueDate: reference, paid: false }] };
   const consolidated = { ...second, installments: [{ id: "historica", amount: "900", remainingAmount: "0", rescheduledIntoId: "novo-acordo", dueDate: reference, paid: false }] };
@@ -68,24 +96,22 @@ test("novo juros de 40% sobre R$ 100 em duas parcelas gera 2x R$ 70", () => {
 
 test("reparcelar um mês congela sua parte do juros diário e mantém o outro mês ativo", () => {
   const agreement = { clientId: "cliente-1", status: "OPEN", openAmount: "200", dailyInterestBaseAmount: "200", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z", installments: [
-    { id: "outubro", amount: "100", dueDate: "2026-10-08T12:00:00Z", paid: false },
-    { id: "novembro", amount: "100", dueDate: "2026-11-08T12:00:00Z", paid: false },
+    { id: "outubro", amount: "100", dueDate: "2026-10-08T12:00:00Z", paid: false, dailyInterestActive: true, dailyInterestBaseAmount: "100", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z" },
+    { id: "novembro", amount: "100", dueDate: "2026-11-08T12:00:00Z", paid: false, dailyInterestActive: true, dailyInterestBaseAmount: "100", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z" },
   ] };
   const transferAt = "2026-10-03T12:00:00Z";
   assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-10", transferAt), 10404);
   agreement.installments[0].rescheduledIntoId = "novo-acordo";
   agreement.installments[0].remainingAmount = "0";
-  agreement.installments[1].remainingAmount = "104.04";
-  agreement.openAmount = "104.04";
-  agreement.dailyInterestBaseAmount = "104.04";
-  agreement.dailyInterestStartedAt = transferAt;
+  agreement.installments[0].dailyInterestActive = false;
+  agreement.openAmount = "100";
   assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-10", "2026-10-04T12:00:00Z"), 0);
   assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-11", "2026-10-04T12:00:00Z"), 10612);
 });
 
 test("quadro mensal consolida juros de vários acordos em um único total", () => {
-  const first = { clientId: "cliente-1", openAmount: "53.60", dailyInterestBaseAmount: "53.60", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z", status: "OPEN", installments: [{ amount: "53.60", amortization: "40", dueDate: "2026-10-08T12:00:00Z", paid: false }] };
-  const second = { clientId: "cliente-1", openAmount: "460", dailyInterestBaseAmount: "460", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z", status: "OPEN", installments: [{ amount: "460", amortization: "400", dueDate: "2026-10-08T12:00:00Z", paid: false }] };
+  const first = { clientId: "cliente-1", openAmount: "53.60", status: "OPEN", installments: [{ amount: "53.60", amortization: "40", dueDate: "2026-10-08T12:00:00Z", paid: false, dailyInterestActive: true, dailyInterestBaseAmount: "53.60", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z" }] };
+  const second = { clientId: "cliente-1", openAmount: "460", status: "OPEN", installments: [{ amount: "460", amortization: "400", dueDate: "2026-10-08T12:00:00Z", paid: false, dailyInterestActive: true, dailyInterestBaseAmount: "460", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z" }] };
   const items = [{ agreement: first, installment: first.installments[0] }, { agreement: second, installment: second.installments[0] }];
   const summary = monthlyDailyInterestSummary(items, "2026-10-03T12:00:00Z");
   closeTo(summary.originalWithoutInterest, 440);
@@ -98,8 +124,8 @@ test("quadro mensal consolida juros de vários acordos em um único total", () =
 });
 
 test("quadro mensal mantém abatimento parcial e identifica taxas diferentes", () => {
-  const partial = { clientId: "cliente-1", openAmount: "40", receivedAmount: "30", dailyInterestBaseAmount: "40", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z", status: "OPEN", installments: [{ amount: "70", amortization: "50", remainingAmount: "40", dueDate: "2026-10-08T12:00:00Z", paid: false }] };
-  const other = { clientId: "cliente-1", openAmount: "30", dailyInterestBaseAmount: "30", dailyInterestRate: "1", dailyInterestStartedAt: "2026-10-02T12:00:00Z", status: "OPEN", installments: [{ amount: "30", amortization: "30", dueDate: "2026-10-08T12:00:00Z", paid: false }] };
+  const partial = { clientId: "cliente-1", openAmount: "40", receivedAmount: "30", status: "OPEN", installments: [{ amount: "70", amortization: "50", remainingAmount: "40", dueDate: "2026-10-08T12:00:00Z", paid: false, dailyInterestActive: true, dailyInterestBaseAmount: "40", dailyInterestRate: "2", dailyInterestStartedAt: "2026-10-01T12:00:00Z" }] };
+  const other = { clientId: "cliente-1", openAmount: "30", status: "OPEN", installments: [{ amount: "30", amortization: "30", dueDate: "2026-10-08T12:00:00Z", paid: false, dailyInterestActive: true, dailyInterestBaseAmount: "30", dailyInterestRate: "1", dailyInterestStartedAt: "2026-10-02T12:00:00Z" }] };
   const items = [{ agreement: partial, installment: partial.installments[0] }, { agreement: other, installment: other.installments[0] }];
   const summary = monthlyDailyInterestSummary(items, "2026-10-03T12:00:00Z");
   closeTo(summary.originalWithoutInterest, 80);
@@ -108,7 +134,7 @@ test("quadro mensal mantém abatimento parcial e identifica taxas diferentes", (
   closeTo(summary.currentTotal, 40 * 1.02 ** 2 + 30 * 1.01);
   assert.deepEqual(summary.rates, [1, 2]);
   assert.deepEqual(summary.days, [1, 2]);
-  assert.equal(monthlyDailyInterestSummary([{ agreement: { ...other, dailyInterestStartedAt: null }, installment: other.installments[0] }], "2026-10-03T12:00:00Z"), null);
+  assert.equal(monthlyDailyInterestSummary([{ agreement: other, installment: { ...other.installments[0], dailyInterestActive: false } }], "2026-10-03T12:00:00Z"), null);
 });
 
 test("relatório distribui juros entre meses sem duplicar o valor do acordo", () => {
@@ -123,15 +149,15 @@ test("relatório distribui juros entre meses sem duplicar o valor do acordo", ()
 test("utilizado por mês soma parcelas do cliente e acompanha o relatório", () => {
   const agreements = [
     { clientId: "cliente-1", openAmount: "140", dailyInterestBaseAmount: "140", dailyInterestRate: "2", dailyInterestStartedAt: "2026-09-22T12:00:00Z", installments: [
-      { amount: "70", dueDate: "2026-10-08T12:00:00Z", paid: false },
-      { amount: "70", dueDate: "2026-11-08T12:00:00Z", paid: false },
+      { amount: "70", dueDate: "2026-10-08T12:00:00Z", paid: false, dailyInterestActive: true, dailyInterestBaseAmount: "70", dailyInterestRate: "2", dailyInterestStartedAt: "2026-09-22T12:00:00Z" },
+      { amount: "70", dueDate: "2026-11-08T12:00:00Z", paid: false, dailyInterestActive: false },
     ] },
     { clientId: "cliente-1", openAmount: "30", installments: [{ amount: "30", dueDate: "2026-10-20T12:00:00Z", paid: true }] },
     { clientId: "cliente-2", openAmount: "900", installments: [{ amount: "900", dueDate: "2026-10-08T12:00:00Z", paid: false }] },
   ];
   const referenceDate = "2026-09-24T12:00:00Z";
   closeTo(monthlyInstallmentTotal(agreements, "cliente-1", "2026-10", referenceDate), 70 * 1.02 ** 2 + 30);
-  closeTo(monthlyInstallmentTotal(agreements, "cliente-1", "2026-11", referenceDate), 70 * 1.02 ** 2);
+  closeTo(monthlyInstallmentTotal(agreements, "cliente-1", "2026-11", referenceDate), 70);
   assert.equal(monthlyInstallmentTotal(agreements, "cliente-1", "2026-12", referenceDate), 0);
   assert.equal(monthlyInstallmentTotal(agreements, "cliente-2", "2026-10", referenceDate), 900);
 });
@@ -153,10 +179,14 @@ test("pagamento parcial do mês abate parcelas antigas e juros usa somente o sal
   agreement.dailyInterestBaseAmount = "110";
   agreement.dailyInterestRate = "2";
   agreement.dailyInterestStartedAt = "2026-10-09T12:00:00Z";
+  agreement.installments[0].dailyInterestActive = true;
+  agreement.installments[0].dailyInterestBaseAmount = "40";
+  agreement.installments[0].dailyInterestRate = "2";
+  agreement.installments[0].dailyInterestStartedAt = "2026-10-09T12:00:00Z";
   const reference = "2026-10-11T12:00:00Z";
   closeTo(reportAgreementInstallmentValue(agreement, agreement.installments[0], reference), 40 * 1.02 ** 2);
-  closeTo(reportAgreementInstallmentValue(agreement, agreement.installments[1], reference), 70 * 1.02 ** 2);
-  closeTo([...capitalizedInstallmentCents(agreement, reference).values()].reduce((sum, value) => sum + value, 0) / 100, 114.44, 0.01);
+  closeTo(reportAgreementInstallmentValue(agreement, agreement.installments[1], reference), 70);
+  closeTo([...capitalizedInstallmentCents(agreement, reference).values()].reduce((sum, value) => sum + value, 0) / 100, 111.62, 0.01);
   assert.throws(() => allocatePartialPaymentCents([{ id: "outubro", balanceCents: 4000 }], 4000));
 });
 

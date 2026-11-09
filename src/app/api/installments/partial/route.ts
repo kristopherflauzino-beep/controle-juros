@@ -42,6 +42,24 @@ export async function POST(req: NextRequest) {
 
       for (const agreement of agreements) {
         if (!agreement.installments.some(item => allocations.has(item.id))) continue;
+        if (agreement.installments.some(item => item.dailyInterestActive)) {
+          let openCents = 0, receivedCents = 0;
+          for (const item of agreement.installments.filter(item => !item.paid && !item.rescheduledIntoId)) {
+            const allocated = allocations.get(item.id) || 0;
+            if (!allocated) { openCents += cents(Number(item.remainingAmount ?? item.amount)); continue; }
+            const balance = (effectiveCents.get(item.id) || 0) - allocated;
+            openCents += balance;
+            receivedCents += allocated;
+            await tx.installment.update({ where: { id: item.id }, data: { remainingAmount: balance / 100, paid: balance === 0,
+              ...(item.dailyInterestActive ? { dailyInterestActive: balance > 0, dailyInterestBaseAmount: balance > 0 ? balance / 100 : null, dailyInterestStartedAt: balance > 0 ? now : null } : {}) } });
+            await tx.partialPayment.create({ data: { operationId, agreementId: agreement.id, installmentId: item.id, amount: allocated / 100 } });
+          }
+          const previouslyReceived = agreement.receivedAmount == null
+            ? agreement.installments.filter(item => item.paid).reduce((sum, item) => sum + cents(Number(item.remainingAmount ?? item.amount)), 0)
+            : cents(Number(agreement.receivedAmount));
+          await tx.agreement.update({ where: { id: agreement.id }, data: { openAmount: openCents / 100, receivedAmount: (previouslyReceived + receivedCents) / 100, status: openCents === 0 ? "PAID" : agreement.status } });
+          continue;
+        }
         let openCents = 0, receivedCents = 0;
         for (const item of agreement.installments.filter(item => !item.paid && !item.rescheduledIntoId)) {
           const allocated = allocations.get(item.id) || 0;
@@ -60,7 +78,7 @@ export async function POST(req: NextRequest) {
           openAmount: openCents / 100,
           receivedAmount: (previouslyReceived + receivedCents) / 100,
           status: openCents === 0 ? "PAID" : agreement.status,
-          ...(agreement.dailyInterestStartedAt ? { dailyInterestActive: openCents > 0, dailyInterestBaseAmount: openCents > 0 ? openCents / 100 : null, dailyInterestStartedAt: openCents > 0 ? now : null } : {}),
+          ...(agreement.dailyInterestActive && agreement.dailyInterestStartedAt ? { dailyInterestActive: openCents > 0, dailyInterestBaseAmount: openCents > 0 ? openCents / 100 : null, dailyInterestStartedAt: openCents > 0 ? now : null } : {}),
         } });
       }
       return { ok: true, month, paid: amountCents / 100 };

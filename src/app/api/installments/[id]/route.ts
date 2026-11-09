@@ -5,25 +5,23 @@ import { fail, requireSession } from "@/lib/api";
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireSession(req, "ADMIN"); if (auth.error) return auth.error;
   const { id } = await params;
-  const installment = await prisma.installment.findUnique({ where: { id }, select: { id: true, agreementId: true, rescheduledIntoId: true } });
+  const installment = await prisma.installment.findUnique({ where: { id }, select: { id: true, agreementId: true, rescheduledIntoId: true, dailyInterestActive: true } });
   if (!installment) return fail("Parcela nao encontrada", 404);
   const agreementToCheck = await prisma.agreement.findUnique({ where: { id: installment.agreementId }, select: { receivedAmount: true, rescheduleOperationId: true, installments: { where: { rescheduledIntoId: { not: null } }, select: { id: true }, take: 1 } } });
   if (installment.rescheduledIntoId || agreementToCheck?.rescheduleOperationId || agreementToCheck?.installments.length) return fail("Parcelas de um reparcelamento ou de sua origem devem ser preservadas.", 409);
+  if (installment.dailyInterestActive) return fail("Esta parcela possui juros diário ativo. Registre o pagamento antes de alterar o histórico.", 409);
   if (agreementToCheck?.receivedAmount != null) return fail("Não é possível excluir parcelas de um acordo com pagamento parcial. O histórico foi preservado.", 409);
 
   const result = await prisma.$transaction(async tx => {
     await tx.installment.delete({ where: { id } });
-    const agreement = await tx.agreement.findUniqueOrThrow({ where: { id: installment.agreementId }, select: { dailyInterestStartedAt: true } });
-    const remaining = await tx.installment.findMany({ where: { agreementId: installment.agreementId }, select: { amount: true, paid: true } });
-    const unpaidTotal = remaining.filter(item => !item.paid).reduce((sum, item) => sum + Number(item.amount), 0);
+    const remaining = await tx.installment.findMany({ where: { agreementId: installment.agreementId }, select: { amount: true, remainingAmount: true, paid: true } });
+    const unpaidTotal = remaining.filter(item => !item.paid).reduce((sum, item) => sum + Number(item.remainingAmount ?? item.amount), 0);
     return tx.agreement.update({
       where: { id: installment.agreementId },
       data: {
         openAmount: unpaidTotal,
         status: remaining.length === 0 ? "CANCELED" : unpaidTotal <= 0 ? "PAID" : "OPEN",
-        dailyInterestActive: unpaidTotal <= 0 ? false : undefined,
-        dailyInterestStartedAt: unpaidTotal <= 0 ? null : agreement.dailyInterestStartedAt ? new Date() : undefined,
-        dailyInterestBaseAmount: unpaidTotal > 0 && agreement.dailyInterestStartedAt ? unpaidTotal : undefined
+        dailyInterestActive: false
       }
     });
   });

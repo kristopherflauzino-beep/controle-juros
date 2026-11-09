@@ -64,10 +64,11 @@ type MonthlyAgreement = {
   openAmount: MoneyValue;
   receivedAmount?: MoneyValue | null;
   status?: string;
+  dailyInterestActive?: boolean;
   dailyInterestBaseAmount?: MoneyValue | null;
   dailyInterestRate?: MoneyValue | null;
   dailyInterestStartedAt?: Date | string | null;
-  installments: { amount: MoneyValue; remainingAmount?: MoneyValue | null; rescheduledIntoId?: string | null; dueDate: Date | string; paid: boolean }[];
+  installments: { amount: MoneyValue; remainingAmount?: MoneyValue | null; rescheduledIntoId?: string | null; dueDate: Date | string; paid: boolean; dailyInterestActive?: boolean; dailyInterestRate?: MoneyValue | null; dailyInterestStartedAt?: Date | string | null; dailyInterestBaseAmount?: MoneyValue | null }[];
 };
 
 export function installmentBalance(installment: MonthlyAgreement["installments"][number]) {
@@ -77,28 +78,24 @@ export function installmentBalance(installment: MonthlyAgreement["installments"]
 export function reportAgreementInstallmentValue(agreement: MonthlyAgreement, installment: MonthlyAgreement["installments"][number], referenceDate: Date | string = new Date()) {
   const amount = installmentBalance(installment);
   if (installment.paid) return amount;
-  const unpaidTotal = agreement.installments.filter(item => !item.paid).reduce((sum, item) => sum + installmentBalance(item), 0);
-  if (unpaidTotal <= 0) return 0;
-  if (agreement.receivedAmount != null) {
-    const updated = dailyInterest(Number(agreement.dailyInterestBaseAmount ?? agreement.openAmount), Number(agreement.dailyInterestRate ?? 0), agreement.dailyInterestStartedAt, referenceDate).updatedAmount;
-    return updated * amount / unpaidTotal;
+  if (installment.dailyInterestActive && installment.dailyInterestStartedAt) {
+    return dailyInterest(Number(installment.dailyInterestBaseAmount ?? amount), Number(installment.dailyInterestRate ?? 0), installment.dailyInterestStartedAt, referenceDate).updatedAmount;
   }
-  return reportInstallmentValue(amount, unpaidTotal, Number(agreement.dailyInterestBaseAmount ?? agreement.openAmount), Number(agreement.dailyInterestRate ?? 0), agreement.dailyInterestStartedAt, referenceDate);
+  return amount;
 }
 
 export function monthlyDailyInterestSummary(items: { agreement: MonthlyAgreement; installment: MonthlyAgreement["installments"][number] & { amortization: MoneyValue } }[], referenceDate: Date | string = new Date()) {
-  const active = items.filter(({ agreement, installment }) => !installment.paid && agreement.dailyInterestStartedAt && agreement.status !== "PAID");
+  const active = items.filter(({ agreement, installment }) => !installment.paid && agreement.status !== "PAID" && installment.dailyInterestActive && installment.dailyInterestStartedAt);
   if (!active.length) return null;
   const currentTotal = items.reduce((sum, { agreement, installment }) => sum + reportAgreementInstallmentValue(agreement, installment, referenceDate), 0);
   const originalWithoutInterest = items.reduce((sum, { installment }) => sum + Number(installment.amortization), 0);
   const originalTotal = items.reduce((sum, { installment }) => sum + Number(installment.amount), 0);
   let accruedInterest = 0;
   const rates = new Set<number>(), days = new Set<number>();
-  for (const { agreement, installment } of active) {
-    const rate = Number(agreement.dailyInterestRate ?? 0);
-    const result = dailyInterest(Number(agreement.dailyInterestBaseAmount ?? agreement.openAmount), rate, agreement.dailyInterestStartedAt, referenceDate);
-    const unpaidTotal = agreement.installments.filter(item => !item.paid).reduce((sum, item) => sum + installmentBalance(item), 0);
-    if (unpaidTotal > 0) accruedInterest += result.accumulated * installmentBalance(installment) / unpaidTotal;
+  for (const { installment } of active) {
+    const rate = Number(installment.dailyInterestRate ?? 0);
+    const result = dailyInterest(Number(installment.dailyInterestBaseAmount ?? installmentBalance(installment)), rate, installment.dailyInterestStartedAt, referenceDate);
+    accruedInterest += result.accumulated;
     rates.add(rate);
     days.add(result.days);
   }
