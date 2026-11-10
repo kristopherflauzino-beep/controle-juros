@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
       for (const item of installments) {
         const result = await tx.installment.updateMany({
           where: { id: item.id, paid: false, rescheduledIntoId: null, dailyInterestActive: false, remainingAmount: item.remainingAmount },
-          data: { dailyInterestActive: true, dailyInterestRate: rate, dailyInterestStartedAt: startedAt, dailyInterestBaseAmount: item.remainingAmount ?? item.amount },
+          data: { dailyInterestActive: true, dailyInterestRate: rate, dailyInterestStartedAt: startedAt, dailyInterestBaseAmount: item.remainingAmount ?? item.amount, dailyInterestCarried: 0 },
         });
         if (result.count !== 1) throw new ActivationConflict("Uma parcela mudou. Atualize o relatório e tente novamente.");
       }

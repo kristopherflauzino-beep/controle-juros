@@ -7,7 +7,7 @@ import type { Session } from "@/lib/auth";
 type Client = { id:string; document?:string; phone?:string;monthlyLimit?:string;monthlyUsed?:number; user:{name:string;email:string;active:boolean;lastSeenAt?:string}; _count?:{agreements:number;requests:number} };
 type Req = { id:string; amount:string; installmentCount:number;interestRate:string;firstDueDate?:string;note?:string; status:string; createdAt:string; client:{id:string;user:{name:string;email:string}} };
 type LimitReq = {id:string;currentLimit:string;requestedLimit:string;status:string;adminMessage?:string;reviewedAt?:string;createdAt:string;client:{user:{name:string;email:string}}};
-type Inst = { id:string;number:number;amount:string;remainingAmount?:string|null;rescheduledIntoId?:string|null;rescheduledAt?:string|null;rescheduledAmount?:string|null;dailyInterestActive?:boolean;dailyInterestRate?:string|null;dailyInterestStartedAt?:string|null;dailyInterestBaseAmount?:string|null;interest:string;amortization:string;balance:string;dueDate:string;paid:boolean;partialPayments?:{amount:string;createdAt:string}[] };
+type Inst = { id:string;number:number;amount:string;remainingAmount?:string|null;rescheduledIntoId?:string|null;rescheduledAt?:string|null;rescheduledAmount?:string|null;dailyInterestActive?:boolean;dailyInterestRate?:string|null;dailyInterestStartedAt?:string|null;dailyInterestBaseAmount?:string|null;dailyInterestCarried?:string|null;interest:string;amortization:string;balance:string;dueDate:string;paid:boolean;partialPayments?:{amount:string;createdAt:string}[] };
 type Agreement = { id:string;clientId:string;requestId?:string;originalAmount:string;openAmount:string;receivedAmount?:string|null;rescheduleOperationId?:string|null;installmentCount:number;interestRate:string;installmentAmount:string;totalAmount:string;agreementDate:string;dueDate:string;status:string;notes?:string;dailyInterestActive?:boolean;dailyInterestRate?:string;dailyInterestStartedAt?:string;dailyInterestBaseAmount?:string;client:{user:{name:string;email:string};document?:string;phone?:string};installments:Inst[] };
 const money = (v:unknown) => Number(v||0).toLocaleString("pt-BR",{style:"currency",currency:"BRL"});
 const date = (v:string) => new Date(v).toLocaleDateString("pt-BR",{timeZone:"UTC"});
@@ -186,9 +186,9 @@ function AgreementModal({value,clients,close,save}:any){
 type InterestSummary=NonNullable<ReturnType<typeof monthlyDailyInterestSummary>>;
 function InterestSummaryCard({values,context}:{values:InterestSummary;context:string}){
   const rateText=`${values.rates.map(rate=>`${rate}%`).join(" / ")} ao dia`;
-  const dayText=values.days.length===1?`${values.days[0]} dias completos`:`${values.days[0]}–${values.days[values.days.length-1]} dias completos`;
+  const dayText=values.days.length===1?`${values.days[0]} ${values.days[0]===1?"dia completo":"dias completos"}`:`${values.days[0]}–${values.days[values.days.length-1]} dias completos`;
   return <section className="daily-interest-card" aria-label="Juros diário ativo">
-    <div className="daily-interest-card-head"><span className="daily-interest-indicator">Juros diário ativo</span><span className="muted">{context} · {dayText} · continua até a quitação</span></div>
+    <div className="daily-interest-card-head"><span className="daily-interest-indicator">Juros diário ativo</span><span className="muted">{context} · {dayText}{values.carriedInterest>0?" neste período; juros anteriores preservados":""} · continua até a quitação</span></div>
     <div className="daily-interest-values">
       <div><span>Valor original sem juros</span><strong>{money(values.originalWithoutInterest)}</strong></div>
       <div><span>Total original do mês</span><strong>{money(values.originalTotal)}</strong></div>

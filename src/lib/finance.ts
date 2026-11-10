@@ -58,14 +58,15 @@ export function dailyInterestBalanceAfterPartialPayment(baseAmount: number, rate
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(payment.getTime())) throw new Error("Data de juros inválida");
   if (!Number.isSafeInteger(paymentCents) || paymentCents < 0) throw new Error("Pagamento parcial inválido");
   const paymentDay = calendarDayIndex(payment);
-  const anchor = calendarDayIndex(start) < paymentDay
+  const previousDay = calendarDayIndex(start) < paymentDay
     ? new Date((paymentDay - 1) * 86_400_000 + 43_200_000)
     : payment;
-  const availableCents = Math.round(dailyInterest(baseAmount, rate, start, anchor).updatedAmount * 100);
+  const previousAmount = dailyInterest(baseAmount, rate, start, previousDay).updatedAmount;
+  const availableCents = Math.round(previousAmount * 100);
   if (paymentCents > availableCents) throw new Error("Pagamento excede o saldo anterior aos juros de hoje");
-  const baseCents = availableCents - paymentCents;
-  const balanceCents = Math.round(dailyInterest(baseCents / 100, rate, anchor, payment).updatedAmount * 100);
-  return { availableCents, baseCents, balanceCents, anchor };
+  const baseAfterPayment = previousAmount - paymentCents / 100;
+  const balanceCents = Math.round(dailyInterest(baseAfterPayment, rate, previousDay, payment).updatedAmount * 100);
+  return { availableCents, baseAfterPayment, balanceCents, accruedBeforePayment: previousAmount - baseAmount, anchor: previousDay };
 }
 
 export function dailyInterest(baseAmount: number, rate: number, startedAt?: Date | string | null, referenceDate: Date | string = new Date()) {
@@ -95,7 +96,7 @@ type MonthlyAgreement = {
   dailyInterestBaseAmount?: MoneyValue | null;
   dailyInterestRate?: MoneyValue | null;
   dailyInterestStartedAt?: Date | string | null;
-  installments: { amount: MoneyValue; remainingAmount?: MoneyValue | null; rescheduledIntoId?: string | null; dueDate: Date | string; paid: boolean; dailyInterestActive?: boolean; dailyInterestRate?: MoneyValue | null; dailyInterestStartedAt?: Date | string | null; dailyInterestBaseAmount?: MoneyValue | null }[];
+  installments: { amount: MoneyValue; remainingAmount?: MoneyValue | null; rescheduledIntoId?: string | null; dueDate: Date | string; paid: boolean; dailyInterestActive?: boolean; dailyInterestRate?: MoneyValue | null; dailyInterestStartedAt?: Date | string | null; dailyInterestBaseAmount?: MoneyValue | null; dailyInterestCarried?: MoneyValue | null }[];
 };
 
 export function installmentBalance(installment: MonthlyAgreement["installments"][number]) {
@@ -117,16 +118,18 @@ export function monthlyDailyInterestSummary(items: { agreement: MonthlyAgreement
   const currentTotal = items.reduce((sum, { agreement, installment }) => sum + reportAgreementInstallmentValue(agreement, installment, referenceDate), 0);
   const originalWithoutInterest = items.reduce((sum, { installment }) => sum + Number(installment.amortization), 0);
   const originalTotal = items.reduce((sum, { installment }) => sum + Number(installment.amount), 0);
-  let accruedInterest = 0;
+  let accruedInterest = 0, carriedInterest = 0;
   const rates = new Set<number>(), days = new Set<number>();
   for (const { installment } of active) {
     const rate = Number(installment.dailyInterestRate ?? 0);
     const result = dailyInterest(Number(installment.dailyInterestBaseAmount ?? installmentBalance(installment)), rate, installment.dailyInterestStartedAt, referenceDate);
-    accruedInterest += result.accumulated;
+    const carried = Number(installment.dailyInterestCarried ?? 0);
+    carriedInterest += carried;
+    accruedInterest += carried + result.accumulated;
     rates.add(rate);
     days.add(result.days);
   }
-  return { originalWithoutInterest, originalTotal, baseTotal: currentTotal - accruedInterest, currentTotal, accruedInterest, rates: [...rates].sort((a, b) => a - b), days: [...days].sort((a, b) => a - b) };
+  return { originalWithoutInterest, originalTotal, baseTotal: currentTotal - accruedInterest, currentTotal, accruedInterest, carriedInterest, rates: [...rates].sort((a, b) => a - b), days: [...days].sort((a, b) => a - b) };
 }
 
 export function capitalizedInstallmentCents(agreement: Omit<MonthlyAgreement, "installments"> & { installments: (MonthlyAgreement["installments"][number] & { id: string; number?: number })[] }, referenceDate: Date | string = new Date()) {

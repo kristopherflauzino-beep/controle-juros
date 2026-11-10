@@ -235,12 +235,54 @@ test("pagamento parcial em 10/11 preserva o juros de 09/11 sobre o valor integra
   const paidAt = "2026-11-10T15:00:00Z";
   const updated = dailyInterestBalanceAfterPartialPayment(100, 2, start, 3000, paidAt);
   assert.equal(updated.availableCents, 10200);
-  assert.equal(updated.baseCents, 7200);
+  closeTo(updated.baseAfterPayment, 72);
   assert.equal(updated.balanceCents, 7344);
-  closeTo(dailyInterest(updated.baseCents / 100, 2, updated.anchor, "2026-11-11T15:00:00Z").updatedAmount, 74.9088);
+  closeTo(dailyInterest(updated.baseAfterPayment, 2, updated.anchor, "2026-11-11T15:00:00Z").updatedAmount, 74.9088);
   const sameDay = dailyInterestBalanceAfterPartialPayment(100, 2, paidAt, 3000, paidAt);
   assert.equal(sameDay.balanceCents, 7000);
   assert.throws(() => dailyInterestBalanceAfterPartialPayment(100, 2, start, 10201, paidAt));
+});
+
+test("R$ 500 pagos em 10/11 preservam juros compostos sobre R$ 1.268,10 antes da baixa", () => {
+  const result = dailyInterestBalanceAfterPartialPayment(1268.1, 2, "2026-11-08T12:00:00Z", 50000, "2026-11-10T12:00:00Z");
+  closeTo(result.accruedBeforePayment, 25.362);
+  closeTo(result.baseAfterPayment, 793.462);
+  assert.equal(result.balanceCents, 80933);
+  closeTo(dailyInterest(result.baseAfterPayment, 2, result.anchor, "2026-11-11T12:00:00Z").updatedAmount, 825.5178648);
+});
+
+test("resumo de novembro preserva juros anteriores à baixa e arredonda o total uma vez", () => {
+  const balances = [515, 100, 140], amounts = [515, 140, 140], amortizations = [515, 100, 100];
+  const bases = [541.2356688742, 105.0943046358, 147.13202649];
+  const carried = [17.2999072848, 3.359205298, 4.7028874172];
+  const agreement = { clientId: "luis", status: "OPEN", openAmount: "755", installments: balances.map((balance, index) => ({
+    amount: amounts[index], remainingAmount: balance, amortization: amortizations[index], dueDate: "2026-11-08T12:00:00Z",
+    paid: false, dailyInterestActive: true, dailyInterestRate: 2, dailyInterestStartedAt: "2026-11-09T12:00:00Z",
+    dailyInterestBaseAmount: bases[index], dailyInterestCarried: carried[index],
+  })) };
+  const items = agreement.installments.map(installment => ({ agreement, installment }));
+  const today = monthlyDailyInterestSummary(items, "2026-11-10T12:00:00Z");
+  closeTo(today.baseTotal, 768.1);
+  closeTo(today.carriedInterest, 25.362);
+  closeTo(today.accruedInterest, 41.23124);
+  assert.equal(Math.round(today.currentTotal * 100), 80933);
+  const tomorrow = monthlyDailyInterestSummary(items, "2026-11-11T12:00:00Z");
+  closeTo(tomorrow.baseTotal, 768.1);
+  assert.equal(Math.round(tomorrow.currentTotal * 100), 82552);
+});
+
+test("ativação começa no dia zero e o total mensal arredonda só na apresentação", () => {
+  const activatedAt = "2026-11-10T14:00:00Z";
+  assert.equal(dailyInterest(10, 2, activatedAt, "2026-11-11T02:59:59Z").days, 0);
+  assert.equal(dailyInterest(10, 2, activatedAt, "2026-11-11T03:00:00Z").days, 1);
+  const bases = [541.2356688742, 105.0943046358, 147.13202649];
+  for (const [reference, expected] of [
+    ["2026-11-10T12:00:00Z", 80933],
+    ["2026-11-11T12:00:00Z", 82552],
+  ]) {
+    const total = bases.reduce((sum, base) => sum + dailyInterest(base, 2, "2026-11-09T12:00:00Z", reference).updatedAmount, 0);
+    assert.equal(Math.round(total * 100), expected);
+  }
 });
 
 test("regra mensal existente preserva o dia e limita o fim do mês", () => {
