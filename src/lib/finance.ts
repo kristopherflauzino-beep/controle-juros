@@ -53,6 +53,21 @@ function calendarDayIndex(date: Date) {
   return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
 }
 
+export function dailyInterestBalanceAfterPartialPayment(baseAmount: number, rate: number, startedAt: Date | string, paymentCents: number, paidAt: Date | string) {
+  const start = new Date(startedAt), payment = new Date(paidAt);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(payment.getTime())) throw new Error("Data de juros inválida");
+  if (!Number.isSafeInteger(paymentCents) || paymentCents < 0) throw new Error("Pagamento parcial inválido");
+  const paymentDay = calendarDayIndex(payment);
+  const anchor = calendarDayIndex(start) < paymentDay
+    ? new Date((paymentDay - 1) * 86_400_000 + 43_200_000)
+    : payment;
+  const availableCents = Math.round(dailyInterest(baseAmount, rate, start, anchor).updatedAmount * 100);
+  if (paymentCents > availableCents) throw new Error("Pagamento excede o saldo anterior aos juros de hoje");
+  const baseCents = availableCents - paymentCents;
+  const balanceCents = Math.round(dailyInterest(baseCents / 100, rate, anchor, payment).updatedAmount * 100);
+  return { availableCents, baseCents, balanceCents, anchor };
+}
+
 export function dailyInterest(baseAmount: number, rate: number, startedAt?: Date | string | null, referenceDate: Date | string = new Date()) {
   if (!Number.isFinite(baseAmount) || baseAmount < 0) throw new Error("Valor base inválido");
   if (!Number.isFinite(rate) || rate < 0) throw new Error("Taxa diária inválida");

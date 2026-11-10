@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fail, requireSession } from "@/lib/api";
-import { allocatePartialPaymentCents, capitalizedInstallmentCents } from "@/lib/finance";
+import { allocatePartialPaymentCents, capitalizedInstallmentCents, dailyInterestBalanceAfterPartialPayment } from "@/lib/finance";
 
 class PaymentConflict extends Error {}
 const cents = (value: number) => Math.round(value * 100);
@@ -46,12 +46,23 @@ export async function POST(req: NextRequest) {
           let openCents = 0, receivedCents = 0;
           for (const item of agreement.installments.filter(item => !item.paid && !item.rescheduledIntoId)) {
             const allocated = allocations.get(item.id) || 0;
-            if (!allocated) { openCents += cents(Number(item.remainingAmount ?? item.amount)); continue; }
-            const balance = (effectiveCents.get(item.id) || 0) - allocated;
+            if (!allocated) { openCents += effectiveCents.get(item.id) || 0; continue; }
+            let balance = (effectiveCents.get(item.id) || 0) - allocated;
+            let interestBase = balance / 100, interestAnchor = now;
+            if (item.dailyInterestActive && item.dailyInterestStartedAt) {
+              try {
+                const updated = dailyInterestBalanceAfterPartialPayment(Number(item.dailyInterestBaseAmount ?? item.remainingAmount ?? item.amount), Number(item.dailyInterestRate ?? 0), item.dailyInterestStartedAt, allocated, now);
+                interestBase = updated.baseCents / 100;
+                interestAnchor = updated.anchor;
+                balance = updated.balanceCents;
+              } catch {
+                throw new PaymentConflict("O pagamento excede o saldo antes dos juros de hoje. Use Pago para quitar a parcela.");
+              }
+            }
             openCents += balance;
             receivedCents += allocated;
             await tx.installment.update({ where: { id: item.id }, data: { remainingAmount: balance / 100, paid: balance === 0,
-              ...(item.dailyInterestActive ? { dailyInterestActive: balance > 0, dailyInterestBaseAmount: balance > 0 ? balance / 100 : null, dailyInterestStartedAt: balance > 0 ? now : null } : {}) } });
+              ...(item.dailyInterestActive ? { dailyInterestActive: balance > 0, dailyInterestBaseAmount: balance > 0 ? interestBase : null, dailyInterestStartedAt: balance > 0 ? interestAnchor : null } : {}) } });
             await tx.partialPayment.create({ data: { operationId, agreementId: agreement.id, installmentId: item.id, amount: allocated / 100 } });
           }
           const previouslyReceived = agreement.receivedAmount == null

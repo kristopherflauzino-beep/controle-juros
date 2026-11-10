@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agreementTableFromTotal, allocatePartialPaymentCents, capitalizedInstallmentCents, clientOutstandingCents, dailyInterest, flatProgressiveTable, monthlyDailyInterestSummary, monthlyDueDate, monthlyInstallmentTotal, reportAgreementInstallmentValue, reportInstallmentValue, rescheduleTable } from "../src/lib/finance.ts";
+import { agreementTableFromTotal, allocatePartialPaymentCents, capitalizedInstallmentCents, clientOutstandingCents, dailyInterest, dailyInterestBalanceAfterPartialPayment, flatProgressiveTable, monthlyDailyInterestSummary, monthlyDueDate, monthlyInstallmentTotal, reportAgreementInstallmentValue, reportInstallmentValue, rescheduleTable } from "../src/lib/finance.ts";
 
 const closeTo = (actual, expected, tolerance = 1e-10) => assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} deveria ser ${expected}`);
 
@@ -228,6 +228,19 @@ test("parcela de novembro vencida no dia 08 acumula juros nos dias 09 e 10 sem a
   assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-11", reference), 10404);
   assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-10", reference), 2000);
   assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-12", reference), 3000);
+});
+
+test("pagamento parcial em 10/11 preserva o juros de 09/11 sobre o valor integral", () => {
+  const start = "2026-11-08T12:00:00Z";
+  const paidAt = "2026-11-10T15:00:00Z";
+  const updated = dailyInterestBalanceAfterPartialPayment(100, 2, start, 3000, paidAt);
+  assert.equal(updated.availableCents, 10200);
+  assert.equal(updated.baseCents, 7200);
+  assert.equal(updated.balanceCents, 7344);
+  closeTo(dailyInterest(updated.baseCents / 100, 2, updated.anchor, "2026-11-11T15:00:00Z").updatedAmount, 74.9088);
+  const sameDay = dailyInterestBalanceAfterPartialPayment(100, 2, paidAt, 3000, paidAt);
+  assert.equal(sameDay.balanceCents, 7000);
+  assert.throws(() => dailyInterestBalanceAfterPartialPayment(100, 2, start, 10201, paidAt));
 });
 
 test("regra mensal existente preserva o dia e limita o fim do mês", () => {
