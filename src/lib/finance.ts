@@ -41,13 +41,25 @@ export function monthlyDueDate(firstDueDate: Date | string, monthOffset: number)
   const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
   return new Date(Date.UTC(year, month, Math.min(day, lastDay), 12));
 }
+const brazilianCalendarDay = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+});
+
+function calendarDayIndex(date: Date) {
+  const parts = brazilianCalendarDay.formatToParts(date);
+  const year = Number(parts.find(part => part.type === "year")?.value);
+  const month = Number(parts.find(part => part.type === "month")?.value);
+  const day = Number(parts.find(part => part.type === "day")?.value);
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000);
+}
+
 export function dailyInterest(baseAmount: number, rate: number, startedAt?: Date | string | null, referenceDate: Date | string = new Date()) {
   if (!Number.isFinite(baseAmount) || baseAmount < 0) throw new Error("Valor base inválido");
   if (!Number.isFinite(rate) || rate < 0) throw new Error("Taxa diária inválida");
   if (!startedAt) return { days: 0, accumulated: 0, updatedAmount: baseAmount };
-  const startTime = new Date(startedAt).getTime(), referenceTime = new Date(referenceDate).getTime();
-  if (!Number.isFinite(startTime) || !Number.isFinite(referenceTime)) throw new Error("Data de juros inválida");
-  const days = Math.max(0, Math.floor((referenceTime - startTime) / 86_400_000));
+  const start = new Date(startedAt), reference = new Date(referenceDate);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(reference.getTime())) throw new Error("Data de juros inválida");
+  const days = Math.max(0, calendarDayIndex(reference) - calendarDayIndex(start));
   const updatedAmount = baseAmount * (1 + rate / 100) ** days;
   return { days, accumulated: updatedAmount - baseAmount, updatedAmount };
 }

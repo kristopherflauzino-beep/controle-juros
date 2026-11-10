@@ -204,9 +204,30 @@ test("pagamento parcial de mês com vários acordos segue a ordem de vencimento"
   assert.deepEqual([...centsAllocation], [["primeira", 7000], ["segunda", 1]]);
 });
 
-test("somente dias completos são contabilizados", () => {
-  assert.equal(dailyInterest(10, 2, "2026-09-22T12:00:00Z", "2026-09-23T11:59:59.999Z").days, 0);
-  assert.equal(dailyInterest(10, 2, "2026-09-22T12:00:00Z", "2026-09-23T12:00:00Z").days, 1);
+test("juros avança na virada do dia em São Paulo, mesmo antes de completar 24 horas", () => {
+  const start = "2026-11-09T01:30:00Z"; // 08/11 às 22h30 em São Paulo
+  const onEighth = dailyInterest(10, 2, start, "2026-11-09T02:59:59Z");
+  const onNinth = dailyInterest(10, 2, start, "2026-11-09T03:00:00Z");
+  const onTenth = dailyInterest(10, 2, start, "2026-11-10T03:00:00Z");
+  assert.equal(onEighth.days, 0);
+  assert.equal(onNinth.days, 1);
+  assert.equal(onTenth.days, 2);
+  closeTo(onNinth.updatedAmount, 10.2);
+  closeTo(onTenth.updatedAmount, 10.404);
+  closeTo(dailyInterest(10, 2, start, "2026-11-10T03:00:00Z").updatedAmount, 10.404);
+  assert.equal(dailyInterest(10, 2, start, "2026-11-08T12:00:00Z").days, 0);
+});
+
+test("parcela de novembro vencida no dia 08 acumula juros nos dias 09 e 10 sem afetar outros meses", () => {
+  const agreement = { clientId: "cliente-1", status: "OPEN", openAmount: "150", installments: [
+    { id: "outubro", amount: "20", dueDate: "2026-10-08T12:00:00Z", paid: false, dailyInterestActive: false },
+    { id: "novembro", amount: "100", dueDate: "2026-11-08T12:00:00Z", paid: false, dailyInterestActive: true, dailyInterestRate: "2", dailyInterestBaseAmount: "100", dailyInterestStartedAt: "2026-11-09T01:30:00Z" },
+    { id: "dezembro", amount: "30", dueDate: "2026-12-08T12:00:00Z", paid: false, dailyInterestActive: false },
+  ] };
+  const reference = "2026-11-10T03:00:00Z";
+  assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-11", reference), 10404);
+  assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-10", reference), 2000);
+  assert.equal(clientOutstandingCents([agreement], "cliente-1", "2026-12", reference), 3000);
 });
 
 test("regra mensal existente preserva o dia e limita o fim do mês", () => {
