@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { fail, requireSession } from "@/lib/api";
+import { overdueDailyInterest } from "@/lib/finance";
 
 class ActivationConflict extends Error {}
 
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
       for (const item of installments) {
         const result = await tx.installment.updateMany({
           where: { id: item.id, paid: false, rescheduledIntoId: null, dailyInterestActive: false, remainingAmount: item.remainingAmount },
-          data: { dailyInterestActive: true, dailyInterestRate: rate, dailyInterestStartedAt: startedAt, dailyInterestBaseAmount: item.remainingAmount ?? item.amount, dailyInterestCarried: 0 },
+          data: { dailyInterestActive: true, dailyInterestPaused: false, dailyInterestRate: rate, dailyInterestStartedAt: startedAt, dailyInterestBaseAmount: item.remainingAmount ?? item.amount, dailyInterestCarried: 0 },
         });
         if (result.count !== 1) throw new ActivationConflict("Uma parcela mudou. Atualize o relatório e tente novamente.");
       }
@@ -44,5 +45,47 @@ export async function POST(req: NextRequest) {
     if (error instanceof ActivationConflict) return fail(error.message, 409);
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return fail("O relatório mudou durante a ativação. Atualize e tente novamente.", 409);
     return fail("Não foi possível ativar o juros diário deste mês.", 500);
+  }
+}
+
+export async function PATCH(req: NextRequest) {
+  const auth = await requireSession(req, "ADMIN");
+  if (auth.error) return auth.error;
+  const body = await req.json();
+  const { clientId, month, action } = body;
+  if (typeof clientId !== "string" || !clientId || typeof month !== "string" || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month) || !["pause", "resume"].includes(action)) return fail("Selecione um cliente, mês e ação válidos.");
+  const start = new Date(`${month}-01T00:00:00.000Z`);
+  const end = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1));
+  const wasPaused = action === "resume";
+
+  try {
+    const changed = await prisma.$transaction(async tx => {
+      const items = await tx.installment.findMany({
+        where: { agreement: { clientId, status: { in: ["OPEN", "LATE"] } }, dueDate: { gte: start, lt: end }, paid: false, rescheduledIntoId: null, dailyInterestActive: true, dailyInterestPaused: wasPaused },
+        select: { id: true, amount: true, remainingAmount: true, dueDate: true, dailyInterestRate: true, dailyInterestStartedAt: true, dailyInterestBaseAmount: true, dailyInterestCarried: true },
+      });
+      if (!items.length) throw new ActivationConflict(wasPaused ? "Não há juros pausados neste mês." : "Não há juros ativos para pausar neste mês.");
+      const now = new Date();
+      for (const item of items) {
+        const base = Number(item.dailyInterestBaseAmount ?? item.remainingAmount ?? item.amount);
+        const projection = !wasPaused && item.dailyInterestStartedAt
+          ? overdueDailyInterest(base, Number(item.dailyInterestRate ?? 0), item.dailyInterestStartedAt, item.dueDate, now)
+          : { updatedAmount: base, accumulated: 0 };
+        const currentBase = Number(projection.updatedAmount.toFixed(10));
+        const carried = Number((Number(item.dailyInterestCarried) + projection.accumulated).toFixed(10));
+        if (!Number.isFinite(currentBase) || !Number.isFinite(carried) || currentBase < 0 || currentBase >= 1e14) throw new ActivationConflict("Saldo de juros inválido. Atualize o relatório.");
+        const result = await tx.installment.updateMany({
+          where: { id: item.id, paid: false, rescheduledIntoId: null, dailyInterestActive: true, dailyInterestPaused: wasPaused },
+          data: { dailyInterestPaused: !wasPaused, dailyInterestBaseAmount: currentBase, dailyInterestStartedAt: now, dailyInterestCarried: carried },
+        });
+        if (result.count !== 1) throw new ActivationConflict("Uma parcela mudou. Atualize o relatório e tente novamente.");
+      }
+      return items.length;
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return NextResponse.json({ changed, month, paused: !wasPaused });
+  } catch (error) {
+    if (error instanceof ActivationConflict) return fail(error.message, 409);
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2034") return fail("O relatório mudou durante a operação. Atualize e tente novamente.", 409);
+    return fail("Não foi possível alterar a pausa do juros diário.", 500);
   }
 }

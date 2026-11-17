@@ -78,6 +78,7 @@ th,td{overflow-wrap:anywhere}
 .report-table .partial-payment-btn:hover{background:#ffe9a3}
 .report-status{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .daily-interest-indicator{display:inline-flex;align-items:center;border-radius:999px;padding:5px 9px;background:#fff0c2;color:#805300;font-size:11px;font-weight:800;line-height:1.2}
+.daily-interest-indicator.paused{background:#e9eef7;color:#40516c}
 .daily-interest-card{min-width:0;margin:16px 0;padding:16px;border:1px solid #f1d68b;border-radius:12px;background:#fffdf5}
 .daily-interest-card-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}
 .daily-interest-values{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}

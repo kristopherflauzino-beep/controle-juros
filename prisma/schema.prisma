@@ -132,6 +132,7 @@ model Installment {
   amount       Decimal   @db.Decimal(14, 2)
   remainingAmount Decimal? @db.Decimal(14, 2)
   dailyInterestActive Boolean @default(false)
+  dailyInterestPaused Boolean @default(false)
   dailyInterestRate Decimal? @db.Decimal(8, 4)
   dailyInterestStartedAt DateTime?
   dailyInterestBaseAmount Decimal? @db.Decimal(24, 10)

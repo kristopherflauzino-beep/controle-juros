@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { agreementTableFromTotal, allocatePartialPaymentCents, capitalizedInstallmentCents, clientOutstandingCents, dailyInterest, dailyInterestBalanceAfterPartialPayment, flatProgressiveTable, monthlyDailyInterestSummary, monthlyDueDate, monthlyInstallmentTotal, reportAgreementInstallmentValue, reportInstallmentValue, rescheduleTable } from "../src/lib/finance.ts";
+import { agreementTableFromTotal, allocatePartialPaymentCents, capitalizedInstallmentCents, clientOutstandingCents, dailyInterest, dailyInterestBalanceAfterPartialPayment, flatProgressiveTable, monthlyDailyInterestSummary, monthlyDueDate, monthlyInstallmentTotal, overdueDailyInterest, reportAgreementInstallmentValue, reportInstallmentValue, rescheduleTable } from "../src/lib/finance.ts";
 
 const closeTo = (actual, expected, tolerance = 1e-10) => assert.ok(Math.abs(actual - expected) <= tolerance, `${actual} deveria ser ${expected}`);
 
@@ -283,6 +283,48 @@ test("ativação começa no dia zero e o total mensal arredonda só na apresenta
     const total = bases.reduce((sum, base) => sum + dailyInterest(base, 2, "2026-11-09T12:00:00Z", reference).updatedAmount, 0);
     assert.equal(Math.round(total * 100), expected);
   }
+});
+
+test("saldo existente em 17/11 permanece igual e parcelas futuras esperam o vencimento", () => {
+  const base = 100, rate = 2, activated = "2026-11-10T12:00:00Z", due = "2026-11-20T12:00:00Z";
+  const onCutoff = dailyInterest(base, rate, activated, "2026-11-17T12:00:00Z").updatedAmount;
+  closeTo(overdueDailyInterest(base, rate, activated, due, "2026-11-17T12:00:00Z").updatedAmount, onCutoff);
+  for (const day of [18, 19, 20]) closeTo(overdueDailyInterest(base, rate, activated, due, `2026-11-${day}T12:00:00Z`).updatedAmount, onCutoff);
+  closeTo(overdueDailyInterest(base, rate, activated, due, "2026-11-21T02:59:59Z").updatedAmount, onCutoff);
+  closeTo(overdueDailyInterest(base, rate, activated, due, "2026-11-21T03:00:00Z").updatedAmount, onCutoff * 1.02);
+});
+
+test("parcela vencida cresce na primeira virada após 17/11; pausa e retomada conservam o saldo", () => {
+  const due = "2026-11-08T12:00:00Z", activated = "2026-11-10T12:00:00Z";
+  const onCutoff = overdueDailyInterest(100, 2, activated, due, "2026-11-17T12:00:00Z").updatedAmount;
+  closeTo(overdueDailyInterest(100, 2, activated, due, "2026-11-18T03:00:00Z").updatedAmount, onCutoff * 1.02);
+  const pausedAt = "2026-11-18T12:00:00Z", frozen = onCutoff * 1.02;
+  closeTo(overdueDailyInterest(frozen, 2, pausedAt, due, "2026-12-01T12:00:00Z", true).updatedAmount, frozen);
+  closeTo(overdueDailyInterest(frozen, 2, "2026-11-25T12:00:00Z", due, "2026-11-26T12:00:00Z").updatedAmount, frozen * 1.02);
+});
+
+test("pagamento parcial após corte não acrescenta juros a parcela ainda não vencida", () => {
+  const result = dailyInterestBalanceAfterPartialPayment(100, 2, "2026-11-17T12:00:00Z", 3000, "2026-11-18T12:00:00Z", "2026-11-20T12:00:00Z");
+  assert.equal(result.balanceCents, 7000);
+  closeTo(overdueDailyInterest(result.baseAfterPayment, 2, result.anchor, "2026-11-20T12:00:00Z", "2026-11-20T12:00:00Z").updatedAmount, 70);
+  closeTo(overdueDailyInterest(result.baseAfterPayment, 2, result.anchor, "2026-11-20T12:00:00Z", "2026-11-21T12:00:00Z").updatedAmount, 71.4);
+});
+
+test("relatório mensal soma apenas juros novos das parcelas vencidas e conserva pausa", () => {
+  const agreement = { clientId: "cliente", status: "OPEN", openAmount: 200, installments: [
+    { id: "vencida", amount: 100, amortization: 100, dueDate: "2026-11-08T12:00:00Z", paid: false, dailyInterestActive: true, dailyInterestRate: 2, dailyInterestStartedAt: "2026-11-17T12:00:00Z", dailyInterestBaseAmount: 100 },
+    { id: "futura", amount: 100, amortization: 100, dueDate: "2026-11-20T12:00:00Z", paid: false, dailyInterestActive: true, dailyInterestRate: 2, dailyInterestStartedAt: "2026-11-17T12:00:00Z", dailyInterestBaseAmount: 100 },
+  ] };
+  assert.equal(Math.round(monthlyInstallmentTotal([agreement], "cliente", "2026-11", "2026-11-18T12:00:00Z") * 100), 20200);
+  agreement.installments[0].dailyInterestPaused = true;
+  agreement.installments[0].dailyInterestCarried = 0;
+  assert.equal(Math.round(monthlyInstallmentTotal([agreement], "cliente", "2026-11", "2026-11-25T12:00:00Z") * 100), 21041);
+  agreement.installments[1].dailyInterestPaused = true;
+  agreement.installments[1].dailyInterestBaseAmount = 110.40808;
+  agreement.installments[1].dailyInterestStartedAt = "2026-11-25T12:00:00Z";
+  const summary = monthlyDailyInterestSummary(agreement.installments.map(installment => ({ agreement, installment })), "2026-12-01T12:00:00Z");
+  assert.equal(summary.paused, true);
+  assert.equal(Math.round(summary.currentTotal * 100), 21041);
 });
 
 test("regra mensal existente preserva o dia e limita o fim do mês", () => {

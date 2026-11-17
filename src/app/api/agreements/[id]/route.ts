@@ -32,7 +32,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         if (paidAmount <= 0) throw new Error("Não há saldo pendente para quitar neste acordo.");
         if (current.installments.some(item => item.dailyInterestActive)) {
           for (const item of current.installments.filter(item => !item.paid && !item.rescheduledIntoId)) {
-            await tx.installment.update({ where: { id: item.id }, data: { paid: true, remainingAmount: (balances.get(item.id) || 0) / 100, dailyInterestActive: false, dailyInterestStartedAt: null, dailyInterestBaseAmount: null } });
+            await tx.installment.update({ where: { id: item.id }, data: { paid: true, remainingAmount: (balances.get(item.id) || 0) / 100, dailyInterestActive: false, dailyInterestPaused: false, dailyInterestStartedAt: null, dailyInterestBaseAmount: null } });
           }
           const previouslyReceived = current.receivedAmount == null ? current.installments.filter(item => item.paid).reduce((sum, item) => sum + Number(item.remainingAmount ?? item.amount), 0) : Number(current.receivedAmount);
           return tx.agreement.update({ where: { id }, data: { status: "PAID", openAmount: 0, receivedAmount: previouslyReceived + paidAmount, dailyInterestActive: false } });

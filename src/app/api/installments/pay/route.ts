@@ -23,7 +23,7 @@ export async function PATCH(req: NextRequest) {
             if (selectedIds.has(item.id)) {
               const value = effectiveCents.get(item.id) || 0;
               paidCents += value;
-              await tx.installment.update({ where: { id: item.id }, data: { paid: true, remainingAmount: value / 100, dailyInterestActive: false, dailyInterestStartedAt: null, dailyInterestBaseAmount: null } });
+              await tx.installment.update({ where: { id: item.id }, data: { paid: true, remainingAmount: value / 100, dailyInterestActive: false, dailyInterestPaused: false, dailyInterestStartedAt: null, dailyInterestBaseAmount: null } });
             } else openCents += Math.round(Number(item.remainingAmount ?? item.amount) * 100);
           }
           const previouslyReceived = agreement.receivedAmount == null ? agreement.installments.filter(item => item.paid).reduce((sum, item) => sum + Math.round(Number(item.remainingAmount ?? item.amount) * 100), 0) : Math.round(Number(agreement.receivedAmount) * 100);

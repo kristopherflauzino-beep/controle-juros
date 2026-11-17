@@ -49,9 +49,13 @@ export async function POST(req: NextRequest) {
             if (!allocated) { openCents += effectiveCents.get(item.id) || 0; continue; }
             let balance = (effectiveCents.get(item.id) || 0) - allocated;
             let interestBase = balance / 100, interestAnchor = now, carriedInterest = Number(item.dailyInterestCarried);
-            if (item.dailyInterestActive && item.dailyInterestStartedAt) {
+            if (item.dailyInterestActive && item.dailyInterestPaused) {
+              interestBase = Number(item.dailyInterestBaseAmount ?? item.remainingAmount ?? item.amount) - allocated / 100;
+              balance = Math.round(interestBase * 100);
+              carriedInterest = Math.max(0, Math.min(interestBase, carriedInterest));
+            } else if (item.dailyInterestActive && item.dailyInterestStartedAt) {
               try {
-                const updated = dailyInterestBalanceAfterPartialPayment(Number(item.dailyInterestBaseAmount ?? item.remainingAmount ?? item.amount), Number(item.dailyInterestRate ?? 0), item.dailyInterestStartedAt, allocated, now);
+                const updated = dailyInterestBalanceAfterPartialPayment(Number(item.dailyInterestBaseAmount ?? item.remainingAmount ?? item.amount), Number(item.dailyInterestRate ?? 0), item.dailyInterestStartedAt, allocated, now, item.dueDate);
                 interestBase = updated.baseAfterPayment;
                 interestAnchor = updated.anchor;
                 balance = updated.balanceCents;
@@ -63,7 +67,7 @@ export async function POST(req: NextRequest) {
             openCents += balance;
             receivedCents += allocated;
             await tx.installment.update({ where: { id: item.id }, data: { remainingAmount: balance / 100, paid: balance === 0,
-              ...(item.dailyInterestActive ? { dailyInterestActive: balance > 0, dailyInterestBaseAmount: balance > 0 ? interestBase : null, dailyInterestStartedAt: balance > 0 ? interestAnchor : null, dailyInterestCarried: balance > 0 ? carriedInterest : item.dailyInterestCarried } : {}) } });
+              ...(item.dailyInterestActive ? { dailyInterestActive: balance > 0, dailyInterestPaused: balance > 0 && item.dailyInterestPaused, dailyInterestBaseAmount: balance > 0 ? interestBase : null, dailyInterestStartedAt: balance > 0 ? interestAnchor : null, dailyInterestCarried: balance > 0 ? carriedInterest : item.dailyInterestCarried } : {}) } });
             await tx.partialPayment.create({ data: { operationId, agreementId: agreement.id, installmentId: item.id, amount: allocated / 100 } });
           }
           const previouslyReceived = agreement.receivedAmount == null
