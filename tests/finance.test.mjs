@@ -327,6 +327,19 @@ test("relatório mensal soma apenas juros novos das parcelas vencidas e conserva
   assert.equal(Math.round(summary.currentTotal * 100), 21041);
 });
 
+test("ajuste pontual de novembro exibe R$ 750 sem alterar a parcela já paga", () => {
+  const amounts = [344.7813809171, 172.3886190829, 0, 70, 39.7, 123.13];
+  const paid = [false, false, true, false, false, true];
+  const agreement = { clientId: "luis", status: "OPEN", openAmount: 626.87, installments: amounts.map((amount, index) => ({
+    id: `novembro-${index}`, amount, remainingAmount: amount, dueDate: "2026-11-08T12:00:00Z", paid: paid[index],
+    dailyInterestActive: index < 2, dailyInterestPaused: index < 2, dailyInterestBaseAmount: amount, dailyInterestRate: 2,
+    dailyInterestStartedAt: index < 2 ? "2026-11-17T12:00:00Z" : null,
+  })) };
+  assert.equal(Math.round(monthlyInstallmentTotal([agreement], "luis", "2026-11", "2026-11-17T16:00:00Z") * 100), 75000);
+  assert.equal(Math.round(monthlyInstallmentTotal([agreement], "luis", "2026-11", "2026-11-25T16:00:00Z") * 100), 75000);
+  assert.equal(agreement.installments[5].remainingAmount, 123.13);
+});
+
 test("regra mensal existente preserva o dia e limita o fim do mês", () => {
   assert.equal(monthlyDueDate("2026-01-31T12:00:00Z", 1).toISOString(), "2026-02-28T12:00:00.000Z");
 });
